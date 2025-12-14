@@ -6,7 +6,7 @@ from stable_baselines3 import PPO
 from stable_baselines3 import A2C
 from sb3_contrib import RecurrentPPO
 
-from gym_hpa.envs import Redis, OnlineBoutique
+from gym_hpa.envs import Redis, VrLearning
 from stable_baselines3.common.callbacks import CheckpointCallback
 
 # Logging
@@ -64,7 +64,7 @@ def get_env(use_case, k8s, goal):
     if use_case == 'redis':
         env = Redis(k8s=k8s, goal_reward=goal)
     elif use_case == 'online_boutique':
-        env = OnlineBoutique(k8s=k8s, goal_reward=goal)
+        env = VrLearning(k8s=k8s, goal_reward=goal)
     else:
         logging.error('Invalid use_case!')
         raise ValueError('Invalid use_case!')
