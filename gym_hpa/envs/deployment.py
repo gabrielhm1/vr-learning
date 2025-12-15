@@ -3,7 +3,7 @@ import math
 import random
 import time
 import requests
-from kubernetes import client
+from kubernetes import client, config 
 
 # Constants
 MAX_CPU = 10000  # cpu in m
@@ -179,21 +179,22 @@ class DeploymentStatus:  # Deployment Status (Workload)
             # token for VWall cluster
             self.token = TOKEN
 
-            # Create a configuration object
-            self.config = client.Configuration()
-            self.config.verify_ssl = False
-            self.config.api_key = {"authorization": "Bearer " + self.token}
+            # # Create a configuration object
+            # self.config = client.Configuration()
+            # self.config.verify_ssl = False
+            # self.config.api_key = {"authorization": "Bearer " + self.token}
 
-            # Specify the endpoint of your Kube cluster: kube proxy enabled
-            self.config.host = HOST
+            # # Specify the endpoint of your Kube cluster: kube proxy enabled
+            # self.config.host = HOST
 
-            # Create a ApiClient with our config
-            self.client = client.ApiClient(self.config)
+            # # Create a ApiClient with our config
+            # self.client = client.ApiClient(self.config)
 
             # v1 api
-            self.v1 = client.CoreV1Api(self.client)
+            config.load_kube_config()
+            self.v1 = client.CoreV1Api()
             # apps v1 api
-            self.apps_v1 = client.AppsV1Api(self.client)
+            self.apps_v1 = client.AppsV1Api()
 
             # metrics api
             # self.metrics_api = client.CustomObjectsApi(self.client)
