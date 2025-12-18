@@ -14,7 +14,7 @@ CPU_WEIGHT = 0.7
 MEM_WEIGHT = 0.3
 
 # port-forward in k8s cluster
-PROMETHEUS_URL = 'http://localhost:9090/'
+PROMETHEUS_URL = 'http://10.2.64.130:32635/'
 
 # Endpoint of your Kube cluster: kube proxy enabled
 HOST = "http://localhost:8080"
@@ -234,11 +234,73 @@ class DeploymentStatus:  # Deployment Status (Workload)
         self.num_pods = self.deployment_object.spec.replicas
 
         # logging.info("[Update obs] Current Pods: " + str(self.num_pods))
-        self.received_traffic += random.randint(1, get_max_traffic())
-        self.transmit_traffic += random.randint(1, get_max_traffic())
-        self.latency = random.uniform(50.0, 300.0)
-        # Get received / transmit traffic
 
+        # Get received / transmit traffic
+        for p in self.pod_names:
+            query_cpu = 'sum(irate(container_cpu_usage_seconds_total{namespace=' \
+                        '"' + self.namespace + '", pod="' + p + '"}[5m])) by (pod)'
+
+            query_mem = 'sum(irate(container_memory_working_set_bytes{namespace=' \
+                        '"' + self.namespace + '", pod="' + p + '"}[5m])) by (pod)'
+
+            query_received = 'sum(irate(container_network_receive_bytes_total{namespace=' \
+                             '"' + self.namespace + '", pod="' + p + '"}[5m])) by (pod)'
+            query_transmit = 'sum(irate(container_network_transmit_bytes_total{namespace="' \
+                             + self.namespace + '", pod="' + p + '"}[5m])) by (pod)'
+
+            # -------------- CPU ----------------
+            results_cpu = self.fetch_prom(query_cpu)
+            if results_cpu:
+                cpu = int(float(results_cpu[0]['value'][1]) * 1000)  # saved as m
+                self.cpu_usage += cpu
+
+            # -------------- MEM ----------------
+            results_mem = self.fetch_prom(query_mem)
+            if results_mem:
+                mem = int(float(results_mem[0]['value'][1]) / 1000000)  # saved as Mi
+                self.mem_usage += mem
+
+            # -------------- Received Traffic  ----------------
+            results_received = self.fetch_prom(query_received)
+            if results_received:
+                rec = int(float(results_received[0]['value'][1]))
+                rec = int(rec / 1000)  # saved as KBit/s
+                self.received_traffic += rec
+
+            # -------------- Transmit Traffic  ----------------
+            results_transmit = self.fetch_prom(query_transmit)
+            if results_transmit:
+                trans = int(float(results_transmit[0]['value'][1]))
+                trans = int(trans / 1000)  # saved as KBit/s
+                self.transmit_traffic += trans
+
+            if self.name == 'redis-leader':
+                query_duration = 'sum(irate(redis_commands_duration_seconds_total[5m]))'
+                query_processed = 'sum(irate(redis_commands_processed_total[5m]))'
+                redis_duration = 0
+                redis_processed = 0
+
+                results_duration = self.fetch_prom(query_duration)
+                if results_duration:
+                    dur = float(results_duration[0]['value'][1])
+                    dur = dur * 1000  # saved as ms
+                    redis_duration = float("{:.3f}".format(dur))
+                # logging.info("[Deployment] redis duration (in ms): " + str(self.redis_duration))
+
+                results_processed = self.fetch_prom(query_processed)
+                if results_processed:
+                    proc = float(results_processed[0]['value'][1])
+                    redis_processed = float("{:.3f}".format(proc))
+                # logging.info("[Deployment] redis processed: " + str(self.redis_processed))
+
+                if redis_processed != 0:
+                    redis_latency = redis_duration / redis_processed
+                else:
+                    redis_latency = redis_duration
+
+                self.latency = float("{:.3f}".format(redis_latency))
+                # logging.info("[Deployment] redis latency (in ms): " + str(self.redis_latency))
+        # Update Desired replicas
         self.update_replicas()
 
         return

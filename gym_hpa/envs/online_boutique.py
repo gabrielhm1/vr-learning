@@ -1,3 +1,4 @@
+import os
 import csv
 import datetime
 from datetime import datetime
@@ -138,8 +139,15 @@ class VrLearning(gym.Env):
         self.episode_count = 0
         self.file_results = "results.csv"
         self.obs_csv = self.name + "_observation.csv"
-        self.df = pd.read_csv("../../datasets/real/" + self.deploymentList[0].namespace + "/v1/"
-                              + self.name + '_' + 'observation.csv')
+
+        # Create CSV files
+        print("Creating file")
+        self.csv_file_path = "../../datasets/real/" + self.deploymentList[0].namespace + "/v1/" + self.obs_csv
+        os.makedirs(os.path.dirname(self.csv_file_path), exist_ok=True)
+        if not os.path.isfile(self.csv_file_path):
+            self.create_csv_file = self.create_csv_file(self.csv_file_path)
+
+        self.df = pd.read_csv(self.csv_file_path)
 
     # revision here!
     def step(self, action):
@@ -178,11 +186,11 @@ class VrLearning(gym.Env):
         # Print Step and Total Reward
         # if self.current_step == MAX_STEPS:
         logging.info('[Step {}] | Action (Deployment): {} | Action (Move): {} | Reward: {} | Total Reward: {}'.format(
-            self.current_step, DEPLOYMENTS[action[0]], MOVES[action[1]], reward, self.total_reward))
+            self.current_step, DEPLOYMENTS[0], MOVES[action], reward, self.total_reward))
 
         ob = self.get_state()
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.save_obs_to_csv(self.obs_csv, np.array(ob), date, self.deploymentList[0].latency)
+        self.save_obs_to_csv(self.csv_file_path, np.array(ob), date, self.deploymentList[0].latency)
 
         self.info = dict(
             total_reward=self.total_reward,
@@ -335,7 +343,8 @@ class VrLearning(gym.Env):
         ob = (
                 self.deploymentList[ID_VR].num_pods,
                 self.deploymentList[ID_VR].desired_replicas,
-                self.deploymentList[ID_VR].cpu_usage, self.deploymentList[ID_VR].mem_usage,
+                self.deploymentList[ID_VR].cpu_usage,
+                self.deploymentList[ID_VR].mem_usage,
                 self.deploymentList[ID_VR].received_traffic,
                 self.deploymentList[ID_VR].transmit_traffic
             )
@@ -347,11 +356,15 @@ class VrLearning(gym.Env):
                 low=np.array([
                     self.min_pods,  # Number of Pods  -- 1) recommendationservice
                     self.min_pods,  # Desired Replicas
+                    0,  # CPU Usage (in m)
+                    0,  # MEM Usage (in MiB)
                     0,  # Average Number of received traffic
                     0,  # Average Number of transmit traffic
                 ]), high=np.array([
                     self.max_pods,  # Number of Pods -- 1)
                     self.max_pods,  # Desired Replicas
+                    get_max_cpu(),  # CPU Usage (in m)
+                    get_max_mem(),  # MEM Usage (in MiB)
                     get_max_traffic(),  # Average Number of received traffic
                     get_max_traffic(),  # Average Number of transmit traffic
                 ]),
@@ -420,9 +433,8 @@ class VrLearning(gym.Env):
     def save_obs_to_csv(self, obs_file, obs, date, latency):
         file = open(obs_file, 'a+', newline='')  # append
         # file = open(file_name, 'w', newline='') # new
-        fields = []
+        fields = ["date"]
         with file:
-            fields.append('date')
             for d in self.deploymentList:
                 fields.append(d.name + '_num_pods')
                 fields.append(d.name + '_desired_replicas')
@@ -431,7 +443,8 @@ class VrLearning(gym.Env):
                 fields.append(d.name + '_traffic_in')
                 fields.append(d.name + '_traffic_out')
                 fields.append(d.name + '_latency')
-
+            logging.info("Fields: " + str(fields))
+            
             '''
             fields = ['date', 'redis-leader_num_pods', 'redis-leader_desired_replicas', 'redis-leader_cpu_usage', 'redis-leader_mem_usage',
                       'redis-leader_cpu_request', 'redis-leader_mem_request', 'redis-leader_cpu_limit', 'redis-leader_mem_limit',
@@ -450,13 +463,27 @@ class VrLearning(gym.Env):
 
             writer.writerow(
                 {'date': date,
-                 'vr_deployment_num_pods': int("{}".format(obs[0])),
-                 'vr_deployment_desired_replicas': int("{}".format(obs[1])),
-                 'vr_deployment_cpu_usage': int("{}".format(obs[2])),
-                 'vr_deployment_mem_usage': int("{}".format(obs[3])),
-                 'vr_deployment_traffic_in': int("{}".format(obs[4])),
-                 'vr_deployment_traffic_out': int("{}".format(obs[5])),
-                 'vr_deployment_latency': float("{:.3f}".format(latency))
+                 'vr-deployment_num_pods': int("{}".format(obs[0])),
+                 'vr-deployment_desired_replicas': int("{}".format(obs[1])),
+                 'vr-deployment_cpu_usage': int("{}".format(obs[2])),
+                 'vr-deployment_mem_usage': int("{}".format(obs[3])),
+                 'vr-deployment_traffic_in': int("{}".format(obs[4])),
+                 'vr-deployment_traffic_out': int("{}".format(obs[5])),
+                 'vr-deployment_latency': float("{:.3f}".format(latency))
                  }
             )
         return
+    def create_csv_file(self, file_name):
+        file = open(file_name, 'w', newline='')
+        fields = ['date']
+        for d in self.deploymentList:
+            fields.append(d.name + '_num_pods')
+            fields.append(d.name + '_desired_replicas')
+            fields.append(d.name + '_cpu_usage')
+            fields.append(d.name + '_mem_usage')
+            fields.append(d.name + '_traffic_in')
+            fields.append(d.name + '_traffic_out')
+            fields.append(d.name + '_latency')
+        with file:
+            writer = csv.DictWriter(file, fieldnames=fields)
+            writer.writeheader()  # write header
