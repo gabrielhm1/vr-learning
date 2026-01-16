@@ -1,0 +1,46 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vr-deployment
+  # namespace: vr-application
+spec:
+  selector:
+    matchLabels:
+      app: vr-deployment
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: vr-deployment
+    spec:
+      # schedulerName: vr-scheduler
+      containers:
+      - name: vr-deployment
+        image: marcosmagnocarvalho/vr-application:v1
+        imagePullPolicy: IfNotPresent
+        resources: 
+          requests:
+            memory: "1024Mi" 
+            cpu: "50m"
+          limits:
+            memory: "1024Mi" 
+            cpu:  "50m""
+        ports:
+        - containerPort: 4443
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vr-services
+  # namespace: vr-application
+
+spec:
+  selector:
+    app: vr-deployment
+
+  type: NodePort
+  ports:
+    - port: 4443
+      targetPort: 4443
+      nodePort: 32001
