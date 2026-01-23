@@ -72,12 +72,16 @@ def run_experiment(num_pods, num_clients, session_duration):
 
 if __name__ == "__main__":
     # Initialize CSV file with headers
+    csv_columns = [
+        "num_pods", "num_clients", "session_duration_s",
+        "cpu_m", "mem_Mi", "net_rx_KBps", "net_tx_KBps",
+        "avg_latency_s", "z1_bit", "z2_bit", "z3_bit", 
+        "n_sw_z1", "n_sw_z2", "n_sw_z3", 
+        "total_stall", "start_time", "q_res_z1", "q_res_z2", "q_res_z3", "q_sw_z1", "q_sw_z2", "q_sw_z3", "q_stall", "QoE"
+    ]
+
     with open(CSV_FILE, "w", newline="") as f:
-        csv.writer(f).writerow([
-            "num_pods", "num_clients", "session_duration_s",
-            "cpu_m", "mem_Mi", "net_rx_KBps", "net_tx_KBps",
-            "avg_latency_s", "z1_bit", "z2_bit", "z3_bit", "qt_sw_z1", "qt_sw_z2", "qt_sw_z3", "total_stall", "start_time", "QoE"
-        ])
+        csv.writer(f).writerow(csv_columns)
 
     # Run experiments across all parameter combinations
     for num_pods in range(1, MAX_PODS + 1):
@@ -100,8 +104,20 @@ if __name__ == "__main__":
                 rx = int(get_value(fetch_prom(query_rx)) / 1000)  # KB/s
                 tx = int(get_value(fetch_prom(query_tx)) / 1000)  # KB/s
 
+                row_data = {
+                    "num_pods": num_pods,
+                    "num_clients": num_clients,
+                    "session_duration_s": session_duration, 
+                    "cpu_m": cpu,
+                    "mem_Mi": mem,
+                    "net_rx_KBps": rx,
+                    "net_tx_KBps": tx,
+                    **data  # Unpacks the payload
+                }
+
                 # Write experiment results to CSV
                 with open(CSV_FILE, "a", newline="") as f:
-                    csv.writer(f).writerow([num_pods, num_clients, session_duration, cpu, mem, rx, tx, data.get("avg_latency", 0), data.get("z1_bit", 0), data.get("z2_bit", 0), data.get("z3_bit", 0), data.get("qt_sw_z1", 0), data.get("qt_sw_z2", 0), data.get("qt_sw_z3", 0), data.get("total_stall", 0), data.get("start_time", 0), data.get("QoE", 0)])
+                    writer = csv.writer(f)
+                    writer.writerow([row_data.get(col, 0) for col in csv_columns])
 
     print("Experiment complete, data saved to data/sample.csv")

@@ -15,8 +15,6 @@ CLIENT_IP = "10.2.64.143"
 WORKER_IP = "10.2.64.137"
 SERVER_IP = "10.2.64.130"
 
-RSU_RANGE = 400  # in meters
-
 def create_folders(num_clients, base_path):
     """
     Create directory structure for storing player logs.
@@ -91,7 +89,7 @@ def start_players():
     # Parse experiment results and compute QoE metrics
     try:
         avg_latency = parse.parse_latency(num_clients, base_path)
-        qoe_metrics = parse.parse_qoe(num_clients, base_path)
+        qoe_metrics = parse.parse_qoe(num_clients, session_duration, base_path)
     except Exception as e:
         return jsonify({"error": f"Parsing failed: {e}"})
 
@@ -103,11 +101,18 @@ def start_players():
         "z1_bit": qoe_metrics['z1_bit'],
         "z2_bit": qoe_metrics['z2_bit'],
         "z3_bit": qoe_metrics['z3_bit'],
-        "qt_sw_z1": qoe_metrics['qt_sw_z1'],
-        "qt_sw_z2": qoe_metrics['qt_sw_z2'],
-        "qt_sw_z3": qoe_metrics['qt_sw_z3'],
+        "n_sw_z1": qoe_metrics['n_sw_z1'],
+        "n_sw_z2": qoe_metrics['n_sw_z2'],
+        "n_sw_z3": qoe_metrics['n_sw_z3'],
         "total_stall": qoe_metrics['total_stall'],
         "start_time": qoe_metrics['start_time'],
+        "q_res_z1": qoe_metrics['q_res_z1'],
+        "q_res_z2": qoe_metrics['q_res_z2'],
+        "q_res_z3": qoe_metrics['q_res_z3'],
+        "q_sw_z1": qoe_metrics['q_sw_z1'],
+        "q_sw_z2": qoe_metrics['q_sw_z2'],
+        "q_sw_z3": qoe_metrics['q_sw_z1'],
+        "q_stall": qoe_metrics['stall_term'],
         "QoE": qoe_metrics['overall_qoe']
     }
 
