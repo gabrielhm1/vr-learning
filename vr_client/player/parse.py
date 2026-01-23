@@ -22,9 +22,14 @@ def parse_latency(num_clients, base_path):
     # Return average latency across all clients
     return sum(results) / len (results)
 
-def parse_qoe(num_clients, base_path):
+def parse_qoe(num_clients, session_duration, base_path):
     """Calculate Quality of Experience (QoE) metrics for all clients."""
-    # QoE calculation parameters
+    # --- QoE calculation parameters ---
+    # Weights for resolutions
+    w_4k = 5.00
+    w_1080 = 3.33
+    w_720 = 1.67
+
     mu = 4.3  # stall penalty
     lamda = 1  # zone switch penalty
     omega = 4.3  # startup delay penalty
@@ -46,25 +51,54 @@ def parse_qoe(num_clients, base_path):
         " z3_bit": " z2_bit",
         " til_4k_z3": " z3_bit"
         }
-
         session_data.rename(columns=column_mapping, inplace=True)
+        row = session_data.iloc[0]
 
         # Initialize metrics dictionary for current client
         metrics = {}
+
         metrics['total_stall'] = session_data.iloc[0][' total_stall']
         metrics['start_time'] = session_data.iloc[0][' start_time']
+
+        if session_duration > 0:
+            metrics['stall_term'] = metrics['total_stall'] / session_duration
+        else:
+            metrics['stall_term'] = 0
         
         # Calculate QoE per zone
-        qoe = 0
-        for i in range(0, 3):
-            # Extract bitrate and switch counts per zone
+        total_score = 0
+        n_chunks = segment_data[' Seg_no'].max()
+        for i, zone in enumerate([1, 2, 3]):
+            # Extract tiles per zone
+            n_720 = row.get(f' til_720_z{zone}', 0)
+            n_1080 = row.get(f' til_1080_z{zone}', 0)
+            n_4k = row.get(f' til_4k_z{zone}', 0)
+
+            n_tiles = n_720 + n_1080 + n_4k
+
+            # Extract switch counts per zone
+            n_switches = row.get(f' qt_sw_z{zone}')
+
+            if n_tiles > 0:
+                q_res = (w_720 * n_720 + w_1080 * n_1080 + w_4k * n_4k) / n_tiles
+            else:
+                q_res = 0
+
+            if n_chunks > 0:
+                q_sw = n_switches / n_chunks
+            else:
+                q_sw = 0
+
+            per_zone = q_res - lamda * q_sw
+            total_score += alphas[i] * per_zone
+
+            # Save relevant metrics 
             metrics[f'z{i+1}_bit'] = segment_data.groupby('Zone')[' Bitrate'].sum()[f'Z{i+1}']
-            metrics[f'qt_sw_z{i+1}'] = session_data.iloc[0][f' qt_sw_z{i+1}']
+            metrics[f'n_sw_z{zone}'] = n_switches
+            metrics[f'q_res_z{zone}'] = q_res
+            metrics[f'q_sw_z{zone}'] = q_sw
 
-            # QoE formula: bitrate - penalties for stalls, switches, and startup
-            per_zone = metrics[f'z{i+1}_bit'] - (mu * metrics['total_stall']) - (lamda * metrics[f'qt_sw_z{i+1}']) - (omega * metrics['start_time'])
-
-            qoe += alphas[i] * per_zone
+        qoe = total_score - mu * metrics['stall_term'] - omega * metrics['start_time']
 
         metrics['overall_qoe'] = qoe
         results.append(metrics)
