@@ -74,6 +74,10 @@ def parse_qoe(num_clients, session_duration, base_path):
             n_1080 = row.get(f' til_1080_z{zone}', 0)
             n_4k = row.get(f' til_4k_z{zone}', 0)
 
+            metrics[f'n_720_z{zone}'] = n_720
+            metrics[f'n_1080_z{zone}'] = n_1080
+            metrics[f'n_4k_z{zone}'] = n_4k
+
             n_tiles = n_720 + n_1080 + n_4k
 
             # Extract switch counts per zone
@@ -95,8 +99,8 @@ def parse_qoe(num_clients, session_duration, base_path):
             # Save relevant metrics 
             metrics[f'z{i+1}_bit'] = segment_data.groupby('Zone')[' Bitrate'].sum()[f'Z{i+1}']
             metrics[f'n_sw_z{zone}'] = n_switches
-            metrics[f'q_res_z{zone}'] = q_res
-            metrics[f'q_sw_z{zone}'] = q_sw
+            metrics[f'res_term_z{zone}'] = q_res
+            metrics[f'sw_term_z{zone}'] = q_sw
 
         qoe = total_score - mu * metrics['stall_term'] - omega * metrics['start_time']
 
