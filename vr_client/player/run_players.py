@@ -42,7 +42,7 @@ def run_command_for_user(user_argument, base_path, session_duration):
         f"{WORKER_IP}:32001", f"v{video_id}", "200",
         f"user_{user_argument}",
         f"../per_video/v{video_id}/u{tracefile}.txt",
-        f"{session_duration}", "4", "12", "0", "1", "0", "4",
+        f"{session_duration}", "4", "12", "0", f"{user_argument}", "0", "4",
         f"{base_path}/user_{user_argument}/"
     ]
     try:
