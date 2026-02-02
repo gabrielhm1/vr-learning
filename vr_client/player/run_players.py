@@ -94,25 +94,23 @@ def start_players():
         return jsonify({"error": f"Parsing failed: {e}"})
 
     # Build response payload with experiment metrics
+    metric_keys = [
+        "z1_bit", "z2_bit", "z3_bit",
+        "n_720_z1", "n_1080_z1", "n_4k_z1",
+        "n_720_z2", "n_1080_z2", "n_4k_z2",
+        "n_720_z3", "n_1080_z3", "n_4k_z3",
+        "n_sw_z1", "n_sw_z2", "n_sw_z3",
+        "total_stall", "start_time",
+        "res_term_z1", "res_term_z2", "res_term_z3",
+        "sw_term_z1", "sw_term_z2", "sw_term_z3",
+        "stall_term"
+    ]
+
     payload = {
         "num_clients": num_clients,
         "num_pods": num_pods,
         "avg_latency": avg_latency,
-        "z1_bit": qoe_metrics['z1_bit'],
-        "z2_bit": qoe_metrics['z2_bit'],
-        "z3_bit": qoe_metrics['z3_bit'],
-        "n_sw_z1": qoe_metrics['n_sw_z1'],
-        "n_sw_z2": qoe_metrics['n_sw_z2'],
-        "n_sw_z3": qoe_metrics['n_sw_z3'],
-        "total_stall": qoe_metrics['total_stall'],
-        "start_time": qoe_metrics['start_time'],
-        "q_res_z1": qoe_metrics['q_res_z1'],
-        "q_res_z2": qoe_metrics['q_res_z2'],
-        "q_res_z3": qoe_metrics['q_res_z3'],
-        "q_sw_z1": qoe_metrics['q_sw_z1'],
-        "q_sw_z2": qoe_metrics['q_sw_z2'],
-        "q_sw_z3": qoe_metrics['q_sw_z1'],
-        "q_stall": qoe_metrics['stall_term'],
+        **{k: qoe_metrics.get(k, 0) for k in metric_keys}, 
         "QoE": qoe_metrics['overall_qoe']
     }
 
