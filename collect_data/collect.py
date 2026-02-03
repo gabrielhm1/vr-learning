@@ -75,9 +75,14 @@ if __name__ == "__main__":
     csv_columns = [
         "num_pods", "num_clients", "session_duration_s",
         "cpu_m", "mem_Mi", "net_rx_KBps", "net_tx_KBps",
-        "avg_latency_s", "z1_bit", "z2_bit", "z3_bit", 
-        "n_sw_z1", "n_sw_z2", "n_sw_z3", 
-        "total_stall", "start_time", "q_res_z1", "q_res_z2", "q_res_z3", "q_sw_z1", "q_sw_z2", "q_sw_z3", "q_stall", "QoE"
+        "avg_latency_s", "n_720_z1", "n_1080_z1", "n_4k_z1",
+        "n_720_z2", "n_1080_z2", "n_4k_z2",
+        "n_720_z3", "n_1080_z3", "n_4k_z3",
+        "n_sw_z1", "n_sw_z2", "n_sw_z3",
+        "total_stall", "start_time",
+        "res_term_z1", "res_term_z2", "res_term_z3",
+        "sw_term_z1", "sw_term_z2", "sw_term_z3",
+        "stall_term", "QoE"
     ]
 
     with open(CSV_FILE, "w", newline="") as f:

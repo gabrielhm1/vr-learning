@@ -9,6 +9,7 @@ import parse
 
 # Flask application to manage VR player simulation and experiment execution, exporting the client-side metrics to master
 app = Flask(__name__)
+app.json.sort_keys = False
 
 # Configuration and network settings
 CLIENT_IP = "10.2.64.143"
@@ -95,7 +96,6 @@ def start_players():
 
     # Build response payload with experiment metrics
     metric_keys = [
-        "z1_bit", "z2_bit", "z3_bit",
         "n_720_z1", "n_1080_z1", "n_4k_z1",
         "n_720_z2", "n_1080_z2", "n_4k_z2",
         "n_720_z3", "n_1080_z3", "n_4k_z3",
@@ -109,7 +109,7 @@ def start_players():
     payload = {
         "num_clients": num_clients,
         "num_pods": num_pods,
-        "avg_latency": avg_latency,
+        "avg_latency_s": avg_latency,
         **{k: qoe_metrics.get(k, 0) for k in metric_keys}, 
         "QoE": qoe_metrics['overall_qoe']
     }
