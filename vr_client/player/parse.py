@@ -97,7 +97,6 @@ def parse_qoe(num_clients, session_duration, base_path):
             total_score += alphas[i] * per_zone
 
             # Save relevant metrics 
-            metrics[f'z{i+1}_bit'] = segment_data.groupby('Zone')[' Bitrate'].sum()[f'Z{i+1}']
             metrics[f'n_sw_z{zone}'] = n_switches
             metrics[f'res_term_z{zone}'] = q_res
             metrics[f'sw_term_z{zone}'] = q_sw
