@@ -745,11 +745,11 @@ int main(int argc, char **argv)
     /* cumulative per-session level metrics */
     char filename3[1000];
     filename3[0] = '\0';
-    strcat(filename2, path);
-    strcat(filename2, uuid);
-    strcat(filename2, "-real_time_session");
-    strcat(filename2, ".csv");
-    strcat(filename2, "\0");
+    strcat(filename3, path);
+    strcat(filename3, uuid);
+    strcat(filename3, "-real_time_session");
+    strcat(filename3, ".csv");
+    strcat(filename3, "\0");
 
     flog3 = fopen(filename3, "wb");
     fprintf(flog3, "Seg_no, %s", session_metrics);
