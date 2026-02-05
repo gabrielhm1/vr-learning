@@ -59,9 +59,14 @@ struct timeval beg, end, last_load, former_last_load;
 
 // file declaration
 FILE *f;
+// summary file
 FILE *flog;
+// segment file (updated in real time)
 FILE *flog1; 
+// session metrics file
 FILE *flog2;
+// per-segment session metrics file (updated in real time)
+FILE *flog3;
 
 // curl handle + other declaraion
 CURL *curl;
@@ -737,11 +742,22 @@ int main(int argc, char **argv)
     strcat(filename2, "\0");
     // filename logfile
     flog2 = fopen(filename2, "wb");
-    fprintf(flog2, "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, z1_bit, z2_bit, z3_bit, til_4k_z3, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time\n");
+    char session_metrics[187] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, z1_bit, z2_bit, z3_bit, til_4k_z3, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time\n"
+    fprintf(flog2, session_metrics);
     ///////////////////////
 
 
+    /* cumulative per-session level metrics */
+    char filename3[1000];
+    filename3[0] = '\0';
+    strcat(filename2, path);
+    strcat(filename2, uuid);
+    strcat(filename2, "-real_time_session");
+    strcat(filename2, ".csv");
+    strcat(filename2, "\0");
 
+    flog3 = fopen(filename3, "wb");
+    fprintf(flog3, strcat("Seg_no, ", session_metrics));
 
     curl = curl_easy_init();
 
