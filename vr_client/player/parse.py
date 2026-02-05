@@ -44,14 +44,6 @@ def parse_qoe(num_clients, session_duration, base_path):
         segment_data = pd.read_csv(segment_file)
         session_data = pd.read_csv(session_file)
 
-        # Map column names to correct zone designations
-        column_mapping = {
-        " z1_bit": " til_4k_z3",
-        " z2_bit": " z1_bit",
-        " z3_bit": " z2_bit",
-        " til_4k_z3": " z3_bit"
-        }
-        session_data.rename(columns=column_mapping, inplace=True)
         row = session_data.iloc[0]
 
         # Initialize metrics dictionary for current client
