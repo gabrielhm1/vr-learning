@@ -187,11 +187,8 @@ void* downloadZ2(void *ptr)
     double refAdj;
 
     char url[200];
-    CURLcode res;
 
     int j, jTile;
-
-    int still_running = 0;
 
     // Create multi handle with multiplex over a single connection
     // CURLM *multi_handle1 = curl_multi_init();
@@ -221,7 +218,7 @@ void* downloadZ2(void *ptr)
         curl_easy_setopt(curl2, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl2, CURLOPT_SSL_VERIFYHOST, 0L);
 
-        res = curl_easy_perform(curl2);
+        curl_easy_perform(curl2);
         
         curl_off_t speed;
         curl_easy_getinfo(curl2, CURLINFO_SPEED_DOWNLOAD_T, &speed);
@@ -232,7 +229,7 @@ void* downloadZ2(void *ptr)
         // gettimeofday(&last_load, NULL);
         elapsed = tvdiff_secs(last_load, beg);
         bitrate = (8.0 * volume) / ttime;
-        bitrate1 = speed * 8.00;
+        bitrate1 =  (double) speed * 8.00;
 
         if (bitrate > maxbitrate)
             maxbitrate = bitrate;
@@ -279,6 +276,7 @@ void* downloadZ2(void *ptr)
     curl_easy_cleanup(curl2);
 
     // free(ptr);
+    return NULL;
 }
 
 /*
@@ -298,7 +296,6 @@ void* downloadZ3(void *ptr)
     double refOut;
 
     char url[200];
-    CURLcode res;
 
     int j, jTile;
     //int cnt3 = 0;
@@ -324,7 +321,7 @@ void* downloadZ3(void *ptr)
         curl_easy_setopt(curl2, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl2, CURLOPT_SSL_VERIFYHOST, 0L);
 
-        res = curl_easy_perform(curl2);
+        curl_easy_perform(curl2);
         curl_off_t speed;
         curl_easy_getinfo(curl2, CURLINFO_SPEED_DOWNLOAD_T, &speed);
 
@@ -334,7 +331,7 @@ void* downloadZ3(void *ptr)
         // gettimeofday(&last_load, NULL);
         elapsed = tvdiff_secs(last_load, beg);
         bitrate = (8.0 * volume) / ttime;
-        bitrate1 = speed * 8.00;
+        bitrate1 = (double) speed * 8.00;
 
         if (bitrate > maxbitrate)
             maxbitrate = bitrate;
@@ -381,13 +378,14 @@ void* downloadZ3(void *ptr)
     curl_easy_cleanup(curl2);
 
     // free(ptr);
+    return NULL;
 }
 
 /*
 Function which translates coordinates to the right Viewport tile.
 Observe tha the viewport (as implemented) can only be 1x1.
 */
-void coordToViewPort(int **matrix, int **output, int mleni, int mlenj, float x, float y, int viewporth, int viewportw)
+void coordToViewPort(int **output, int mleni, int mlenj, float x, float y)
 {
 
     float stepX = 0.0, stepY = 0.0;
@@ -399,27 +397,27 @@ void coordToViewPort(int **matrix, int **output, int mleni, int mlenj, float x, 
 
     if (x > 0)
     {
-        stepY = 3.14 / (float)(mlenj / 2);
-        tileY = y / stepY;
+        stepY = (float) (3.14 / (float)(mlenj / 2));
+        tileY = (int) (y / stepY);
         j = tileY;
     }
     else
     {
-        stepY = 3.14 / (float)(mlenj / 2);
-        tileY = -1 * y / stepY;
+        stepY = (float) (3.14 / (float)(mlenj / 2));
+        tileY = (int) (-1 * y / stepY);
         j = mlenj - 1 - tileY;
     }
 
     if (y > 0)
     {
-        stepX = 1.57 / (float)(mleni / 2);
-        tileX = x / stepX;
+        stepX = (float) (1.57 / (float)(mleni / 2));
+        tileX = (int) (x / stepX);
         i = tileX;
     }
     else
     {
-        stepX = 1.57 / (float)(mleni / 2);
-        tileX = -1 * x / stepX;
+        stepX = (float) (1.57 / (float)(mleni / 2));
+        tileX = (int) (-1 * x / stepX);
         i = mleni - 1 - tileX;
     }
 
@@ -578,8 +576,6 @@ int main(int argc, char **argv)
 
     int contIR = 0;
 
-    CURLcode res;
-
     char heuristic;
 
     int stall_count = 0;
@@ -588,7 +584,7 @@ int main(int argc, char **argv)
 
     curl_global_init(CURL_GLOBAL_ALL);
 
-    srand(time(0));
+    srand((unsigned int) time(NULL));
 
     avg_window = (double *)malloc(AVERAGE_WINDOW_SIZE * sizeof(double));
 
@@ -634,7 +630,7 @@ int main(int argc, char **argv)
     int error_rate = atoi(argv[9]);
     NUM_THREADS = atoi(argv[10]);
 
-    heuristic = atoi(argv[11]);
+    heuristic = (char) atoi(argv[11]);
 
     BUFFER_LIMIT = atoi(argv[12]);
 
@@ -645,10 +641,10 @@ int main(int argc, char **argv)
     int k, l;
     int c = 1;
 
-    int **matrix = (int **)malloc((mleni + 1) * sizeof(int *));
-    int **output = (int **)malloc((mleni + 1) * sizeof(int *));
+    int **matrix = (int **)malloc((size_t) (mleni + 1) * sizeof(int *));
+    int **output = (int **)malloc((size_t) (mleni + 1) * sizeof(int *));
 
-    int **output_error = (int **)malloc((mleni + 1) * sizeof(int *));
+    int **output_error = (int **)malloc((size_t) (mleni + 1) * sizeof(int *));
 
     if (matrix == NULL || output == NULL)
     {
@@ -659,10 +655,10 @@ int main(int argc, char **argv)
     for (k = 0; k < mleni; k++)
     {
 
-        matrix[k] = (int *)malloc((mlenj + 1) * sizeof(int));
-        output[k] = (int *)malloc((mlenj + 1) * sizeof(int));
+        matrix[k] = (int *)malloc((size_t) (mlenj + 1) * sizeof(int));
+        output[k] = (int *)malloc((size_t) (mlenj + 1) * sizeof(int));
 
-        output_error[k] = (int *)malloc((mlenj + 1) * sizeof(int));
+        output_error[k] = (int *)malloc((size_t) (mlenj + 1) * sizeof(int));
 
         if (matrix[k] == NULL || output[k] == NULL || output_error[k] == NULL)
         {
@@ -769,13 +765,13 @@ int main(int argc, char **argv)
         // from trace
         float time, x, y;
 
-        viewport = (int *)malloc(mleni * mlenj * sizeof(int));
-        adjacency = (int *)malloc(mleni * mlenj * sizeof(int));
-        outside = (int *)malloc(mleni * mlenj * sizeof(int));
+        viewport = (int *)malloc((size_t) (mleni * mlenj) * sizeof(int));
+        adjacency = (int *)malloc((size_t) (mleni * mlenj) * sizeof(int));
+        outside = (int *)malloc((size_t) (mleni * mlenj) * sizeof(int));
 
-        viewport_error = (int *)malloc(mleni * mlenj * sizeof(int));
-        adjacency_error = (int *)malloc(mleni * mlenj * sizeof(int));
-        outside_error = (int *)malloc(mleni * mlenj * sizeof(int));
+        viewport_error = (int *)malloc((size_t) (mleni * mlenj) * sizeof(int));
+        adjacency_error = (int *)malloc((size_t) (mleni * mlenj) * sizeof(int));
+        outside_error = (int *)malloc((size_t) (mleni * mlenj) * sizeof(int));
 
         int switchVp = 0;
         int switchAdj = 0;
@@ -800,7 +796,6 @@ int main(int argc, char **argv)
         contmili = 0.0;
 
         double refOut = 0;
-        double refAdj = 0;
         double refVp = 0;
 
         int c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0, c6 = 0, c7 = 0;
@@ -820,7 +815,7 @@ int main(int argc, char **argv)
             int len_outside = 0;
 
             // syncronization
-            sleep(0.1);
+            usleep(100000);
 
             gettimeofday(&last_load, NULL);
 
@@ -846,7 +841,7 @@ int main(int argc, char **argv)
             }
 
             // From coordinates X and Y (from trace file), we build and output matrix accordinly.
-            coordToViewPort(matrix, output, mleni, mlenj, x, y, 1, 1);
+            coordToViewPort(output, mleni, mlenj, x, y);
 
             // We do the same to build the adjancy and outside representation.
             viewPortToAdjacency(matrix, output, mleni, mlenj, 1, viewport, &len_viewport, adjacency, &len_adjacency, outside, &len_outside);
@@ -1088,7 +1083,7 @@ int main(int argc, char **argv)
 
                 // build URL
                 buildURL(url, destination, video_id, mleni, mlenj, resolutionVp, viewport[jTile], i);
-                /* Perform the request, res will get the return code */
+                /* Perform the request, res will get the return code (removed) */
 
                 /* write to this file */
                 curl_easy_setopt(curl1, CURLOPT_WRITEDATA, f);
@@ -1103,7 +1098,7 @@ int main(int argc, char **argv)
                 curl_easy_setopt(curl1, CURLOPT_SSL_VERIFYPEER, 0L);
                 curl_easy_setopt(curl1, CURLOPT_SSL_VERIFYHOST, 0L);
 
-                res = curl_easy_perform(curl1);
+                curl_easy_perform(curl1);
                 curl_off_t speed;
 
                 // gettimeofday(&last_load, NULL);
@@ -1114,7 +1109,7 @@ int main(int argc, char **argv)
                 curl_easy_getinfo(curl1, CURLINFO_SPEED_DOWNLOAD_T, &speed);
 
                 bitrate = (8.0 * volume) / ttime;
-                bitrate1 = speed * 8.0;
+                bitrate1 = (double) speed * 8.0;
 
                 if (bitrate > maxbitrate)
                 {
@@ -1158,7 +1153,6 @@ int main(int argc, char **argv)
             curl_easy_cleanup(curl1);
 
             local_avg = 0;
-            refAdj = 0;
 
             if (strcmp(resolutionAdj, "720") == 0)
             {
@@ -1179,7 +1173,6 @@ int main(int argc, char **argv)
             int lower = 0, upper = div;
 
             int auxNum = (NUM_THREADS < len_adjacency ? NUM_THREADS : len_adjacency);
-            int z2_lt = 0, z2_ut = 0;
 
             // donwload tiles from adjacency (or zone Z2)
             for (int cont_thread = 0; cont_thread < auxNum; cont_thread++)
@@ -1196,9 +1189,6 @@ int main(int argc, char **argv)
                     args->lower_limit = lower;
                     args->upper_limit = upper;
 
-                    z2_lt = lower;
-                    z2_ut = upper;
-
                     pthread_create(&threadsId[cont_thread], NULL, downloadZ2, (void *)args);
                 }
 
@@ -1211,8 +1201,6 @@ int main(int argc, char **argv)
                     args->lower_limit = lower;
                     args->upper_limit = upper;
 
-                    z2_lt = lower;
-                    z2_ut = upper;
                     pthread_create(&threadsId[cont_thread], NULL, downloadZ2, (void *)args);
 
                     lower = upper + 1;
@@ -1247,8 +1235,6 @@ int main(int argc, char **argv)
             auxNum = (NUM_THREADS < len_outside ? NUM_THREADS : len_outside);
 
             // upper = len_outside-1;
-
-            int z3_lt = 0, z3_ut = 0;
             // donwload tiles from outside (or zone Z3)
             for (int cont_thread = 0; cont_thread < auxNum; cont_thread++)
             {
@@ -1264,8 +1250,6 @@ int main(int argc, char **argv)
                     args->lower_limit = lower;
                     args->upper_limit = upper;
 
-                    z3_lt = lower;
-                    z3_ut = upper;
                     pthread_create(&threadsId[cont_thread], NULL, downloadZ3, (void *)args);
                 }
                 else
@@ -1277,8 +1261,6 @@ int main(int argc, char **argv)
                     args->lower_limit = lower;
                     args->upper_limit = upper;
 
-                    z3_lt = lower;
-                    z3_ut = upper;
                     pthread_create(&threadsId[cont_thread], NULL, downloadZ3, (void *)args);
 
                     lower = upper + 1;
@@ -1328,7 +1310,7 @@ int main(int argc, char **argv)
                     double error_x = randfrom(-3.14, 3.14);
                     double error_y = randfrom(-1.57, 1.57);
 
-                    coordToViewPort(matrix, output_error, mleni, mlenj, error_x, error_y, 1, 1);
+                    coordToViewPort(output_error, mleni, mlenj, (float) error_x, (float) error_y);
                     viewPortToAdjacency(matrix, output_error, mleni, mlenj, 1, viewport_error, &len_viewport_error, adjacency_error, &len_adjacency_error, outside_error, &len_outside_error);
 
                     for (int i_aux = 0; i_aux < len_viewport_error; i_aux++)
