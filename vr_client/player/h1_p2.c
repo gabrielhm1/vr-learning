@@ -1665,8 +1665,9 @@ int main(int argc, char **argv)
                 fprintf(flog1, "Z3, %d, %d, %s, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf\n", tile, i, z3_res[tile], z3_ss[tile], z3_st[tile], z3_bit[tile], z3_bit1[tile], buffer_time, BUFFER_LIMIT, z3_el[tile], z3_rv[tile], z3_la[tile]);
             }
 
+            // Update cumulative session metrics in real time (per segment)
+            fprintf(flog3, "%d %d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %.6lf\n", i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, startup_time);
             
-
             ///////////////
 
             // increment segment count
@@ -1709,8 +1710,6 @@ int main(int argc, char **argv)
         }
 
         gettimeofday(&end, NULL);
-
-        "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time\n"
 
         fprintf(flog2, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %.6lf\n", cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, startup_time);
 
