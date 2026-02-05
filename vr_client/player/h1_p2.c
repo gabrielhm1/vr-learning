@@ -173,7 +173,7 @@ void buildURL(char *url, char *destination, char *video_id, int mleni, int mlenj
 /*
 Thread function which implements the download of tiles in Z2 (adjacency layer).
 */
-void downloadZ2(void *ptr)
+void* downloadZ2(void *ptr)
 {
 
     struct arg_struct *aux = (struct arg_struct *)ptr;
@@ -284,7 +284,7 @@ void downloadZ2(void *ptr)
 /*
 Thread function which implements the download of tiles in Z3 (outside layer).
 */
-void downloadZ3(void *ptr)
+void* downloadZ3(void *ptr)
 {
 
     struct arg_struct *aux = (struct arg_struct *)ptr;
@@ -742,10 +742,9 @@ int main(int argc, char **argv)
     strcat(filename2, "\0");
     // filename logfile
     flog2 = fopen(filename2, "wb");
-    char session_metrics[187] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time\n"
-    fprintf(flog2, session_metrics);
+    char session_metrics[187] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time\n";
+    fprintf(flog2, "%s", session_metrics);
     ///////////////////////
-
 
     /* cumulative per-session level metrics */
     char filename3[1000];
@@ -757,7 +756,7 @@ int main(int argc, char **argv)
     strcat(filename2, "\0");
 
     flog3 = fopen(filename3, "wb");
-    fprintf(flog3, strcat("Seg_no, ", session_metrics));
+    fprintf(flog3, "Seg_no, %s", session_metrics);
 
     curl = curl_easy_init();
 
