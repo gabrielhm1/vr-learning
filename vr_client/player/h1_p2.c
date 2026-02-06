@@ -55,7 +55,7 @@ int cnt2 = 0;
 int cnt3 = 0;
 
 // struc delaration
-struct timeval beg, end, last_load, former_last_load;
+struct timeval beg, end, last_load, former_last_load, curr;
 
 // file declaration
 FILE *f;
@@ -568,6 +568,52 @@ void viewPortToAdjacency(int **matrix, int **output, int mleni, int mlenj, int a
     }
 }
 
+double calculateQoE(int n_segments, int cont720z1, int cont1080z1, 
+                    int cont4kz1, int cont720z2, int cont1080z2, int cont4kz2, int cont720z3, int cont1080z3, int cont4kz3, int switchVp, int switchAdj, int switchOut, double stall_len, double startup_time, double curr_duration)
+{
+    // Weights for the resolutions
+    double w_4k = 5;
+    double w_1080 = 3.33;
+    double w_720 = 1.67;
+
+    double mu = 4.3;  // stall penalty
+    double lamda = 1;  // zone switch penalty
+    double omega = 4.3;  // startup delay penalty
+    double alphas[3] = {0.7, 0.2, 0.1};  // zone weights
+
+    int res_count[3][3] = {
+        {cont720z1, cont1080z1, cont4kz1},
+        {cont720z2, cont1080z2, cont4kz2},
+        {cont720z3, cont1080z3, cont4kz3}
+    };
+
+    int sw_count[3] = {switchVp, switchAdj, switchOut};
+
+    int n_tiles;
+    double q_res, q_sw;
+    double per_zone;
+    double total_score = 0;
+    for (int i = 0; i < 3; i++) {
+        n_tiles = res_count[i][0] + res_count[i][1] + res_count[i][2];
+
+        if (n_tiles > 0)
+            q_res = (w_720 * res_count[i][0] + w_1080 * res_count[i][1] + w_4k * res_count[i][2]) / n_tiles;
+        else
+            q_res = 0;
+
+        if (n_segments > 0)
+            q_sw = sw_count[i] / n_segments;
+        else
+            q_sw = 0;
+
+        per_zone = q_res - lamda * q_sw;
+        total_score += alphas[i] * per_zone;
+    }
+
+    double qoe = total_score - mu * (stall_len / curr_duration) - omega * startup_time;
+    return qoe;
+}
+
 /*
 Main fuction started from here
 */
@@ -738,7 +784,7 @@ int main(int argc, char **argv)
     strcat(filename2, "\0");
     // filename logfile
     flog2 = fopen(filename2, "wb");
-    char session_metrics[187] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time\n";
+    char session_metrics[192] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time, QoE\n";
     fprintf(flog2, "%s", session_metrics);
     ///////////////////////
 
@@ -799,6 +845,9 @@ int main(int argc, char **argv)
         double refVp = 0;
 
         int c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0, c6 = 0, c7 = 0;
+
+        double curr_duration = 0;
+        double qoe = 0;
 
         // i represents the current segment.
         while (i <= segment_count_i)
@@ -1644,10 +1693,15 @@ int main(int argc, char **argv)
             {
                 // fprintf(flog1,"Zone, Tile_no, Seg_no, Reso, Seg_d_size, Seg_d_time, Bitrate, Buf_lev, Buf_limit, Elapsed, Ref_vp, Local_avg");
                 fprintf(flog1, "Z3, %d, %d, %s, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf\n", tile, i, z3_res[tile], z3_ss[tile], z3_st[tile], z3_bit[tile], z3_bit1[tile], buffer_time, BUFFER_LIMIT, z3_el[tile], z3_rv[tile], z3_la[tile]);
-            }
+            } 
+
+            gettimeofday(&curr, NULL);
+            curr_duration = tvdiff_secs(curr, beg);
+
+            qoe = calculateQoE(i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, switchVp, switchAdj, switchOut, stall_len, startup_time, curr_duration);
 
             // Update cumulative session metrics in real time (per segment)
-            fprintf(flog3, "%d %d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %.6lf\n", i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, startup_time);
+            fprintf(flog3, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %.6lf, %.6lf\n", i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, startup_time, qoe);
             
             ///////////////
 
@@ -1692,7 +1746,7 @@ int main(int argc, char **argv)
 
         gettimeofday(&end, NULL);
 
-        fprintf(flog2, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %.6lf\n", cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, startup_time);
+        fprintf(flog2, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %.6lf, %.6lf\n", cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, startup_time, qoe);
 
         fprintf(flog, "%lu.%06lu;%.6lf;%.6lf;%.6lf;%d;%d;%d;%d\n", end.tv_sec, end.tv_usec, tvdiff_secs(end, beg), startup_time, stall_len, stall_count, switchVp, switchAdj, switchOut);
         printf("%lu.%06lu;%.6lf;%.6lf;%.6lf;%d;%d;%d;%d\n", end.tv_sec, end.tv_usec, tvdiff_secs(end, beg), startup_time, stall_len, stall_count, switchVp, switchAdj, switchOut);
