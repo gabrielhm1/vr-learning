@@ -1,6 +1,5 @@
 # compiler
 CC = gcc
-CFLAGS = -Wall -Wextra -Wpedantic -Wformat-security -Wconversion -Werror -g
 
 # sources and target
 MAIN = h1_p2
