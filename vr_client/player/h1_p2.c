@@ -80,9 +80,14 @@ static int tiles_count_global = 0;
 static double maxbitrate = 0;
 static double avgbitratez1 = 0.0, avgbitratez2 = 0.0, avgbitratez3 = 0.0;
 static int contz1 = 0, contz2 = 0, contz3 = 0;
+
 static int cont720z1 = 0, cont1080z1 = 0, cont4kz1 = 0;
 static int cont720z2 = 0, cont1080z2 = 0, cont4kz2 = 0;
 static int cont720z3 = 0, cont1080z3 = 0, cont4kz3 = 0;
+
+int prev_cont720z1 = 0, prev_cont1080z1 = 0, prev_cont4kz1 = 0;
+int prev_cont720z2 = 0, prev_cont1080z2 = 0, prev_cont4kz2 = 0;
+int prev_cont720z3 = 0, prev_cont1080z3 = 0, prev_cont4kz3 = 0;
 
 double z1_ss[100], z2_ss[100], z3_ss[100];
 double z1_st[100], z2_st[100], z3_st[100];
@@ -650,6 +655,8 @@ int main(int argc, char **argv)
 
     double elapsed, elapsedTrace, startup_time, buffer_time, time_from_last_load, stall_len, bitrate, bitrate1;
 
+    double prev_stall_len = 0;
+
     int i = 1;
 
     if (argc < 13)
@@ -784,7 +791,7 @@ int main(int argc, char **argv)
     strcat(filename2, "\0");
     // filename logfile
     flog2 = fopen(filename2, "wb");
-    char session_metrics[192] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time, QoE\n";
+    char session_metrics[200] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time, segment_qoe\n";
     fprintf(flog2, "%s", session_metrics);
     ///////////////////////
 
@@ -798,7 +805,8 @@ int main(int argc, char **argv)
     strcat(filename3, "\0");
 
     flog3 = fopen(filename3, "wb");
-    fprintf(flog3, "Seg_no, %s", session_metrics);
+    char real_time_metrics[234] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time, segment_avg_latency, session_qoe\n";
+    fprintf(flog3, "Seg_no, %s", real_time_metrics);
 
     curl = curl_easy_init();
 
@@ -822,6 +830,8 @@ int main(int argc, char **argv)
         int switchVp = 0;
         int switchAdj = 0;
         int switchOut = 0;
+
+        int prev_switchVp = 0, prev_switchAdj = 0, prev_switchOut = 0;
 
         int stall_count_vp = 0;
         int stall_count_adj = 0;
@@ -847,7 +857,8 @@ int main(int argc, char **argv)
         int c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0, c6 = 0, c7 = 0;
 
         double curr_duration = 0;
-        double qoe = 0;
+        double avg_latency_segment = 0; 
+        double qoe = 0, qoe_segment = 0;
 
         // i represents the current segment.
         while (i <= segment_count_i)
@@ -1677,32 +1688,95 @@ int main(int argc, char **argv)
             }
             ///////////////////////
 
+            avg_latency_segment = 0;
+
             for (jTile = 0; jTile < len_viewport; jTile++)
             {
                 // fprintf(flog1,"Zone, Tile_no, Seg_no, Reso, Seg_d_size, Seg_d_time, Bitrate, Buf_lev, Buf_limit, Elapsed, Ref_vp, Local_avg");
                 fprintf(flog1, "Z1, %d, %d, %s, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf\n", jTile, i, z1_res[jTile], z1_ss[jTile], z1_st[jTile], z1_bit[jTile], z1_bit1[jTile], buffer_time, BUFFER_LIMIT, z1_el[jTile], z1_rv[jTile], z1_la[jTile]);
+                
+                avg_latency_segment += z1_st[jTile];
             }
 
             for (int tile = 0; tile <cnt2; tile++)
             {
                 // fprintf(flog1,"Zone, Tile_no, Seg_no, Reso, Seg_d_size, Seg_d_time, Bitrate, Buf_lev, Buf_limit, Elapsed, Ref_vp, Local_avg");
                 fprintf(flog1, "Z2, %d, %d, %s, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf\n", tile, i, z2_res[tile], z2_ss[tile], z2_st[tile], z2_bit[tile], z2_bit1[tile], buffer_time, BUFFER_LIMIT, z2_el[tile], z2_rv[tile], z2_la[tile]);
+                
+                avg_latency_segment += z2_st[tile];
             }
 
             for (int tile = 0; tile < cnt3; tile++)
             {
                 // fprintf(flog1,"Zone, Tile_no, Seg_no, Reso, Seg_d_size, Seg_d_time, Bitrate, Buf_lev, Buf_limit, Elapsed, Ref_vp, Local_avg");
                 fprintf(flog1, "Z3, %d, %d, %s, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf\n", tile, i, z3_res[tile], z3_ss[tile], z3_st[tile], z3_bit[tile], z3_bit1[tile], buffer_time, BUFFER_LIMIT, z3_el[tile], z3_rv[tile], z3_la[tile]);
+                
+                avg_latency_segment += z1_st[tile];
             } 
 
             gettimeofday(&curr, NULL);
             curr_duration = tvdiff_secs(curr, beg);
 
+            avg_latency_segment = avg_latency_segment / (len_viewport + cnt2 + cnt3);
+
             qoe = calculateQoE(i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, switchVp, switchAdj, switchOut, stall_len, startup_time, curr_duration);
 
-            // Update cumulative session metrics in real time (per segment)
-            fprintf(flog3, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %.6lf, %.6lf\n", i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, startup_time, qoe);
+            /*
+
+            // Real segment duration, considering stalls
+            double segment_real_duration = tvdiff_secs(curr, last_load); 
+
+            // Safety check to prevent division by zero 
+            if (segment_real_duration < SEGMENT_TIME) segment_real_duration = SEGMENT_TIME;
+
+            // Calculate deltas 
+            int d_720z1 = cont720z1 - prev_cont720z1;
+            int d_1080z1 = cont1080z1 - prev_cont1080z1;
+            int d_4kz1 = cont4kz1 - prev_cont4kz1;
+
+            int d_720z2 = cont720z2 - prev_cont720z2;
+            int d_1080z2 = cont1080z2 - prev_cont1080z2;
+            int d_4kz2 = cont4kz2 - prev_cont4kz2;
+
+            int d_720z3 = cont720z3 - prev_cont720z3;
+            int d_1080z3 = cont1080z3 - prev_cont1080z3;
+            int d_4kz3 = cont4kz3 - prev_cont4kz3;
+
+            // Calculate switch deltas (if a switch happened in this segment, delta will be > 0)
+            int d_switchVp = switchVp - prev_switchVp;
+            int d_switchAdj = switchAdj - prev_switchAdj;
+            int d_switchOut = switchOut - prev_switchOut;
+
+            // Calculate stall delta
+            double d_stall_len = stall_len - prev_stall_len;
+
+            double seg_startup = (i == 1) ? startup_time : 0.0;
+
+            qoe_segment = calculateQoE(1, d_720z1, d_1080z1, d_4kz1, d_720z2, d_1080z2, d_4kz2, d_720z3, d_1080z3, d_4kz3, d_switchVp, d_switchAdj, d_switchOut, d_stall_len, seg_startup, segment_real_duration);
+
+            // 4. Update Previous Counters
+            prev_cont720z1 = cont720z1;
+            prev_cont1080z1 = cont1080z1;
+            prev_cont4kz1 = cont4kz1;
             
+            prev_cont720z2 = cont720z2;
+            prev_cont1080z2 = cont1080z2;
+            prev_cont4kz2 = cont4kz2;
+
+            prev_cont720z3 = cont720z3;
+            prev_cont1080z3 = cont1080z3;
+            prev_cont4kz3 = cont4kz3;
+
+            prev_switchVp = switchVp;
+            prev_switchAdj = switchAdj;
+            prev_switchOut = switchOut;
+
+            prev_stall_len = stall_len; 
+            */
+
+            // Update cumulative session metrics in real time (per segment)
+            fprintf(flog3, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %.6lf, %lf, %.6lf\n", i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, startup_time, avg_latency_segment, qoe);
+
             ///////////////
 
             // increment segment count
