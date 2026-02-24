@@ -13,6 +13,8 @@ MAX_TRAFFIC = 20000  # MAX Number of requests (in Kbit/s)
 CPU_WEIGHT = 0.7
 MEM_WEIGHT = 0.3
 
+VR_SESSION_DURATION = 60 # session duration in s
+
 # port-forward in k8s cluster
 PROMETHEUS_URL = 'http://10.2.64.130:32635/'
 
@@ -22,23 +24,12 @@ HOST = "http://localhost:8080"
 # TODO: Add the TOKEN from your cluster!
 TOKEN = ""
 
-
-def get_redis_deployment_list(k8s, min, max):
-    deployment_list = [
-        DeploymentStatus(k8s, "redis-leader", "redis", "leader", "docker.io/redis:6.0.5",
-                         max, min, 250, 500, 250, 500),
-        DeploymentStatus(k8s, "redis-follower", "redis", "follower",
-                         "gcr.io/google_samples/gb-redis-follower:v2",
-                         max, min, 250, 500, 250, 500)]
-    return deployment_list
-
-
-def get_online_boutique_vr_list(k8s, min, max):
+def get_vr_list(k8s, min, max):
     deployment_list = [
         # 1
         DeploymentStatus(k8s, "vr-deployment", "default", "vr-deployment",
                          "marcosmagnocarvalho/vr-application:v1",
-                         max, min, 100, 200, 220, 450)
+                         max, min, 100, 100, 50, 50)
     ]
     return deployment_list
 
@@ -53,6 +44,9 @@ def get_max_mem():
 
 def get_max_traffic():
     return MAX_TRAFFIC
+
+def get_session_duration():
+    return VR_SESSION_DURATION
 
 def convert_to_milli_cpu(value):
     new_value = int(value[:-1])
@@ -274,32 +268,6 @@ class DeploymentStatus:  # Deployment Status (Workload)
                 trans = int(trans / 1000)  # saved as KBit/s
                 self.transmit_traffic += trans
 
-            if self.name == 'redis-leader':
-                query_duration = 'sum(irate(redis_commands_duration_seconds_total[5m]))'
-                query_processed = 'sum(irate(redis_commands_processed_total[5m]))'
-                redis_duration = 0
-                redis_processed = 0
-
-                results_duration = self.fetch_prom(query_duration)
-                if results_duration:
-                    dur = float(results_duration[0]['value'][1])
-                    dur = dur * 1000  # saved as ms
-                    redis_duration = float("{:.3f}".format(dur))
-                # logging.info("[Deployment] redis duration (in ms): " + str(self.redis_duration))
-
-                results_processed = self.fetch_prom(query_processed)
-                if results_processed:
-                    proc = float(results_processed[0]['value'][1])
-                    redis_processed = float("{:.3f}".format(proc))
-                # logging.info("[Deployment] redis processed: " + str(self.redis_processed))
-
-                if redis_processed != 0:
-                    redis_latency = redis_duration / redis_processed
-                else:
-                    redis_latency = redis_duration
-
-                self.latency = float("{:.3f}".format(redis_latency))
-                # logging.info("[Deployment] redis latency (in ms): " + str(self.redis_latency))
         # Update Desired replicas
         self.update_replicas()
 
