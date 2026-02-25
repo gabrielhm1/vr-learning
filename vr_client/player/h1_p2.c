@@ -791,7 +791,7 @@ int main(int argc, char **argv)
     strcat(filename2, "\0");
     // filename logfile
     flog2 = fopen(filename2, "wb");
-    char session_metrics[200] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time, segment_qoe\n";
+    char session_metrics[200] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, stall_count, start_time, segment_qoe\n";
     fprintf(flog2, "%s", session_metrics);
     ///////////////////////
 
@@ -1820,7 +1820,7 @@ int main(int argc, char **argv)
 
         gettimeofday(&end, NULL);
 
-        fprintf(flog2, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %.6lf, %.6lf\n", cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, startup_time, qoe);
+        fprintf(flog2, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %d, %.6lf, %.6lf\n", cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, stall_count, startup_time, qoe);
 
         fprintf(flog, "%lu.%06lu;%.6lf;%.6lf;%.6lf;%d;%d;%d;%d\n", end.tv_sec, end.tv_usec, tvdiff_secs(end, beg), startup_time, stall_len, stall_count, switchVp, switchAdj, switchOut);
         printf("%lu.%06lu;%.6lf;%.6lf;%.6lf;%d;%d;%d;%d\n", end.tv_sec, end.tv_usec, tvdiff_secs(end, beg), startup_time, stall_len, stall_count, switchVp, switchAdj, switchOut);
