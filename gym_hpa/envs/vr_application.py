@@ -5,6 +5,9 @@ from datetime import datetime
 import logging
 import time
 from statistics import mean
+import requests
+import random
+import subprocess
 
 import gym
 import numpy as np
@@ -13,7 +16,7 @@ from gym import spaces
 from gym.utils import seeding
 
 # Number of Requests - Discrete Event
-from gym_hpa.envs.deployment import get_max_cpu, get_max_mem, get_max_traffic, get_vr_list
+from gym_hpa.envs.deployment import get_max_cpu, get_max_mem, get_max_traffic, get_max_latency, get_vr_list, get_max_stall_duration, get_max_stall_count, get_session_duration
 from gym_hpa.envs.util import save_to_csv, get_num_pods, get_cost_reward, \
     get_latency_reward_online_boutique
 
@@ -21,7 +24,21 @@ from gym_hpa.envs.util import save_to_csv, get_num_pods, get_cost_reward, \
 MIN_REPLICATION = 1
 MAX_REPLICATION = 10
 
+# MIN and MAX clients
+MIN_CLIENTS = 0
+MAX_CLIENTS = 30
+
+# MIN and MAX delay in ms
+MIN_DELAY = 0
+MAX_DELAY = 20
+
 MAX_STEPS = 25  # MAX Number of steps per episode
+
+FLASK_URL = "http://10.2.64.143:8000/start"
+
+WORKER_IP = "10.2.64.137"
+USER = "marcosbh"
+INTERFACE = "eno1"
 
 # Possible Actions (Discrete)
 ACTION_DO_NOTHING = 0
@@ -105,7 +122,14 @@ class VrLearning(gym.Env):
 
         self.min_pods = MIN_REPLICATION
         self.max_pods = MAX_REPLICATION
-        self.num_apps = 2
+
+        self.min_clients = MIN_CLIENTS
+        self.max_clients = MAX_CLIENTS
+
+        self.min_delay = MIN_DELAY
+        self.max_delay = MAX_DELAY
+
+        self.num_apps = 1
 
         # Deployment Data
         self.deploymentList = get_vr_list(self.k8s, self.min_pods, self.max_pods)
@@ -149,6 +173,31 @@ class VrLearning(gym.Env):
 
         self.df = pd.read_csv(self.csv_file_path)
 
+    def run_remote_command(self, command, user=USER, ip=WORKER_IP):
+        """Executes a command on the worker node via SSH."""
+        ssh_cmd = ["ssh", f"{user}@{ip}", command]
+        try:
+            subprocess.run(
+                ssh_cmd,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,  
+                text=True,
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"Warning: Remote command failed: {command}")
+            print(e.stderr)
+
+    def set_network(self, delay_ms, interface=INTERFACE):
+        """Applies tc netem rules on the worker node."""
+        clean_cmd = f"sudo tc qdisc del dev {interface} root"
+        self.run_remote_command(clean_cmd)
+
+        if delay_ms > 0:
+            netem_cmd = f"sudo tc qdisc add dev {interface} root netem delay {delay_ms}ms"
+
+            self.run_remote_command(netem_cmd)
+
     # revision here!
     def step(self, action):
         if self.current_step == 1:
@@ -168,9 +217,34 @@ class VrLearning(gym.Env):
                 # logging.info('[Step {}] | Waiting {} seconds for enabling action ...'
                 # .format(self.current_step, self.waiting_period))
                 time.sleep(self.waiting_period)  # Wait a few seconds...
+            
+            network_delay = random.randint(self.min_delay, self.max_delay)
+            num_clients = random.randint(self.min_clients, self.max_clients)
+
+            self.deploymentList[0].network_delay = network_delay
+            self.deploymentList[0].num_clients = num_clients
+            
+            # Set random delay
+            self.set_network(delay_ms=network_delay)
+
+            # Trigger the VR session
+            payload = {
+                "amount_user": num_clients,
+                "amount_pods": self.deploymentList[0].num_pods,
+                "session_duration": get_session_duration()
+            }
+            try:
+                response = requests.post(FLASK_URL, json=payload, timeout=300)
+                if response.status_code == 200:
+                    data = response.json()
+                    # Save client-side metrics
+                    self.deploymentList[0].latency = data.get('avg_latency_s', 0)
+                    self.deploymentList[0].stall_duration = data.get('total_stall', 0)
+                    self.deploymentList[0].stall_count = data.get('stall_count', 0)
+            except Exception as e:
+                logging.error(f"Failed to start VR session: {e}")
 
         # Update observation before reward calculation:
-        if self.k8s:  # k8s cluster
             for d in self.deploymentList:
                 d.update_obs_k8s()
         else:
@@ -232,7 +306,7 @@ class VrLearning(gym.Env):
         self.constraint_min_pod_replicas = False
 
         # Deployment Data
-        self.deploymentList = get_online_boutique_vr_list(self.k8s, self.min_pods, self.max_pods)
+        self.deploymentList = get_vr_list(self.k8s, self.min_pods, self.max_pods)
 
         return np.array(self.get_state())
 
@@ -341,12 +415,17 @@ class VrLearning(gym.Env):
 
         # Return ob
         ob = (
+                self.deploymentList[ID_VR].num_clients,
+                self.deploymentList[ID_VR].network_delay,
                 self.deploymentList[ID_VR].num_pods,
                 self.deploymentList[ID_VR].desired_replicas,
                 self.deploymentList[ID_VR].cpu_usage,
                 self.deploymentList[ID_VR].mem_usage,
                 self.deploymentList[ID_VR].received_traffic,
-                self.deploymentList[ID_VR].transmit_traffic
+                self.deploymentList[ID_VR].transmit_traffic,
+                self.deploymentList[ID_VR].latency,
+                self.deploymentList[ID_VR].stall_duration,
+                self.deploymentList[ID_VR].stall_count
             )
 
         return ob
@@ -354,19 +433,29 @@ class VrLearning(gym.Env):
     def get_observation_space(self):
             return spaces.Box(
                 low=np.array([
+                    self.min_clients, # Number of clients
+                    self.min_delay, # Network delay
                     self.min_pods,  # Number of Pods  -- 1) recommendationservice
                     self.min_pods,  # Desired Replicas
                     0,  # CPU Usage (in m)
                     0,  # MEM Usage (in MiB)
                     0,  # Average Number of received traffic
                     0,  # Average Number of transmit traffic
+                    0,  # Latency
+                    0,  # Stall duration
+                    0   # Stall count
                 ]), high=np.array([
+                    self.max_clients, # Number of clients
+                    self.max_delay, # Network delay
                     self.max_pods,  # Number of Pods -- 1)
                     self.max_pods,  # Desired Replicas
                     get_max_cpu(),  # CPU Usage (in m)
                     get_max_mem(),  # MEM Usage (in MiB)
                     get_max_traffic(),  # Average Number of received traffic
                     get_max_traffic(),  # Average Number of transmit traffic
+                    get_max_latency(),
+                    get_max_stall_duration(),
+                    get_max_stall_count()
                 ]),
                 dtype=np.float32
             )
@@ -436,6 +525,8 @@ class VrLearning(gym.Env):
         fields = ["date"]
         with file:
             for d in self.deploymentList:
+                fields.append(d.name + '_num_clients')
+                fields.append(d.name + '_network_delay')
                 fields.append(d.name + '_num_pods')
                 fields.append(d.name + '_desired_replicas')
                 fields.append(d.name + '_cpu_usage')
@@ -443,33 +534,27 @@ class VrLearning(gym.Env):
                 fields.append(d.name + '_traffic_in')
                 fields.append(d.name + '_traffic_out')
                 fields.append(d.name + '_latency')
+                fields.append(d.name + '_stall_duration')
+                fields.append(d.name + '_stall_count')
             logging.info("Fields: " + str(fields))
             
-            '''
-            fields = ['date', 'redis-leader_num_pods', 'redis-leader_desired_replicas', 'redis-leader_cpu_usage', 'redis-leader_mem_usage',
-                      'redis-leader_cpu_request', 'redis-leader_mem_request', 'redis-leader_cpu_limit', 'redis-leader_mem_limit',
-                      'redis-leader_traffic_in', 'redis-leader_traffic_out',
-                      'redis-follower_num_pods', 'redis-follower_desired_replicas', 'redis-follower_cpu_usage',
-                      'redis-follower_mem_usage', 'redis-follower_cpu_request', 'redis-follower_mem_request', 'redis-follower_cpu_limit',
-                      'redis-follower_mem_limit', 'redis-follower_traffic_in', 'redis-follower_traffic_out']
-            '''
             writer = csv.DictWriter(file, fieldnames=fields)
             # writer.writeheader() # write header
 
-            # TO ALTER!
-            # DEPLOYMENTS = ["recommendationservice", "productcatalogservice", "cartservice",
-            # "adservice", "paymentservice", "shippingservice", "currencyservice",
-            # "redis-cart", "checkoutservice", "frontend", "emailservice"]
 
             writer.writerow(
                 {'date': date,
-                 'vr-deployment_num_pods': int("{}".format(obs[0])),
-                 'vr-deployment_desired_replicas': int("{}".format(obs[1])),
-                 'vr-deployment_cpu_usage': int("{}".format(obs[2])),
-                 'vr-deployment_mem_usage': int("{}".format(obs[3])),
-                 'vr-deployment_traffic_in': int("{}".format(obs[4])),
-                 'vr-deployment_traffic_out': int("{}".format(obs[5])),
-                 'vr-deployment_latency': float("{:.3f}".format(latency))
+                 'vr-deployment_num_clients': int("{}".format(obs[0])),
+                 'vr-deployment_network_delay': int("{}".format(obs[1])),
+                 'vr-deployment_num_pods': int("{}".format(obs[2])),
+                 'vr-deployment_desired_replicas': int("{}".format(obs[3])),
+                 'vr-deployment_cpu_usage': int("{}".format(obs[4])),
+                 'vr-deployment_mem_usage': int("{}".format(obs[5])),
+                 'vr-deployment_traffic_in': int("{}".format(obs[6])),
+                 'vr-deployment_traffic_out': int("{}".format(obs[7])),
+                 'vr-deployment_latency': float("{:.3f}".format(obs[8])),
+                 'vr-deployment_stall_duration': float("{:.3f}".format(obs[9])),
+                 'vr-deployment_stall_count': int("{}".format(obs[10]))
                  }
             )
         return
@@ -477,6 +562,8 @@ class VrLearning(gym.Env):
         file = open(file_name, 'w', newline='')
         fields = ['date']
         for d in self.deploymentList:
+            fields.append(d.name + '_num_clients')
+            fields.append(d.name + '_network_delay')
             fields.append(d.name + '_num_pods')
             fields.append(d.name + '_desired_replicas')
             fields.append(d.name + '_cpu_usage')
@@ -484,6 +571,8 @@ class VrLearning(gym.Env):
             fields.append(d.name + '_traffic_in')
             fields.append(d.name + '_traffic_out')
             fields.append(d.name + '_latency')
+            fields.append(d.name + '_stall_duration')
+            fields.append(d.name + '_stall_count')
         with file:
             writer = csv.DictWriter(file, fieldnames=fields)
             writer.writeheader()  # write header

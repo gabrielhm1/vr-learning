@@ -9,6 +9,11 @@ from kubernetes import client, config
 MAX_CPU = 10000  # cpu in m
 MAX_MEM = 10000  # memory in MiB
 MAX_TRAFFIC = 20000  # MAX Number of requests (in Kbit/s)
+MAX_LATENCY = 1000 # latency in ms
+
+MAX_STALL_DURATION = 300 # stall in s
+MAX_STALL_COUNT = 300
+
 
 CPU_WEIGHT = 0.7
 MEM_WEIGHT = 0.3
@@ -37,16 +42,23 @@ def get_vr_list(k8s, min, max):
 def get_max_cpu():
     return MAX_CPU
 
-
 def get_max_mem():
     return MAX_MEM
-
 
 def get_max_traffic():
     return MAX_TRAFFIC
 
+def get_max_latency():
+    return MAX_LATENCY
+
 def get_session_duration():
     return VR_SESSION_DURATION
+
+def get_max_stall_duration():
+    return MAX_STALL_DURATION
+
+def get_max_stall_count():
+    return MAX_STALL_COUNT
 
 def convert_to_milli_cpu(value):
     new_value = int(value[:-1])
@@ -160,7 +172,19 @@ class DeploymentStatus:  # Deployment Status (Workload)
         self.sleep = 0.2
 
         # App. Latency
-        self.latency = 0
+        self.latency = 0.0
+
+        # Total stall duration of the VR 
+        self.stall_duration = 0.0
+
+        # Number of stalls
+        self.stall_count = 0
+
+        # Network delay (Worker node)
+        self.network_delay = 0.0
+
+        # Number of clients
+        self.num_clients = 0
 
         if self.k8s:  # Real env: consider a k8s cluster
             logging.info("[Deployment] Consider a real k8s cluster ... ")
@@ -232,15 +256,15 @@ class DeploymentStatus:  # Deployment Status (Workload)
         # Get received / transmit traffic
         for p in self.pod_names:
             query_cpu = 'sum(irate(container_cpu_usage_seconds_total{namespace=' \
-                        '"' + self.namespace + '", pod="' + p + '"}[5m])) by (pod)'
+                        '"' + self.namespace + '", pod="' + p + '"}[' + get_session_duration() + '])) by (pod)'
 
             query_mem = 'sum(irate(container_memory_working_set_bytes{namespace=' \
-                        '"' + self.namespace + '", pod="' + p + '"}[5m])) by (pod)'
+                        '"' + self.namespace + '", pod="' + p + '"}[' + get_session_duration() + '])) by (pod)'
 
             query_received = 'sum(irate(container_network_receive_bytes_total{namespace=' \
-                             '"' + self.namespace + '", pod="' + p + '"}[5m])) by (pod)'
+                             '"' + self.namespace + '", pod="' + p + '"}[' + get_session_duration() + '])) by (pod)'
             query_transmit = 'sum(irate(container_network_transmit_bytes_total{namespace="' \
-                             + self.namespace + '", pod="' + p + '"}[5m])) by (pod)'
+                             + self.namespace + '", pod="' + p + '"}[' + get_session_duration() + '])) by (pod)'
 
             # -------------- CPU ----------------
             results_cpu = self.fetch_prom(query_cpu)
