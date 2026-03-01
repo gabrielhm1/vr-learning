@@ -791,11 +791,12 @@ int main(int argc, char **argv)
     strcat(filename2, "\0");
     // filename logfile
     flog2 = fopen(filename2, "wb");
-    char session_metrics[200] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, stall_count, start_time, segment_qoe\n";
+    char session_metrics[] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, stall_count, start_time, session_qoe\n";
     fprintf(flog2, "%s", session_metrics);
     ///////////////////////
 
     /* cumulative per-session level metrics */
+    /*
     char filename3[1000];
     filename3[0] = '\0';
     strcat(filename3, path);
@@ -805,8 +806,9 @@ int main(int argc, char **argv)
     strcat(filename3, "\0");
 
     flog3 = fopen(filename3, "wb");
-    char real_time_metrics[234] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time, segment_avg_latency, session_qoe\n";
+    char real_time_metrics[] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time, segment_avg_latency, session_qoe\n";
     fprintf(flog3, "Seg_no, %s", real_time_metrics);
+    */
 
     curl = curl_easy_init();
 
@@ -1714,12 +1716,14 @@ int main(int argc, char **argv)
                 avg_latency_segment += z1_st[tile];
             } 
 
+            /*
             gettimeofday(&curr, NULL);
             curr_duration = tvdiff_secs(curr, beg);
 
             avg_latency_segment = avg_latency_segment / (len_viewport + cnt2 + cnt3);
 
             qoe = calculateQoE(i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, switchVp, switchAdj, switchOut, stall_len, startup_time, curr_duration);
+            /*
 
             /*
 
@@ -1775,7 +1779,11 @@ int main(int argc, char **argv)
             */
 
             // Update cumulative session metrics in real time (per segment)
+
+            /*
             fprintf(flog3, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %.6lf, %lf, %.6lf\n", i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, startup_time, avg_latency_segment, qoe);
+            */
+
 
             ///////////////
 
@@ -1819,6 +1827,9 @@ int main(int argc, char **argv)
         }
 
         gettimeofday(&end, NULL);
+        curr_duration = tvdiff_secs(end, beg);
+
+        qoe = calculateQoE(i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, switchVp, switchAdj, switchOut, stall_len, startup_time, curr_duration);
 
         fprintf(flog2, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %d, %.6lf, %.6lf\n", cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, stall_count, startup_time, qoe);
 
