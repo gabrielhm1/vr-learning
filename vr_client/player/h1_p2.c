@@ -777,7 +777,7 @@ int main(int argc, char **argv)
     strcat(filename1, "\0");
     // filename logfile
     flog1 = fopen(filename1, "wb");
-    fprintf(flog1, "Zone, Tile_no, Seg_no, Reso, Seg_d_size, Seg_d_time, Bitrate, Bitrate1, Buf_lev, Buf_limit, Elapsed, Ref_vp, Local_avg\n");
+    fprintf(flog1, "Zone,Tile_no,Seg_no,Reso,Seg_d_size,Seg_d_time,Bitrate,Bitrate1,Buf_lev,Buf_limit,Elapsed,Ref_vp,Local_avg\n");
     ///////////////////////
 
 
@@ -791,7 +791,7 @@ int main(int argc, char **argv)
     strcat(filename2, "\0");
     // filename logfile
     flog2 = fopen(filename2, "wb");
-    char session_metrics[] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, stall_count, start_time, session_qoe\n";
+    char session_metrics[] = "til_720_z1,til_1080_z1,til_4k_z1,til_720_z2,til_1080_z2,til_4k_z2,til_720_z3,til_1080_z3,til_4k_z3,z1_bit,z2_bit,z3_bit,qt_sw_z1,qt_sw_z2,qt_sw_z3,total_stall,stall_count,start_time,session_qoe\n";
     fprintf(flog2, "%s", session_metrics);
     ///////////////////////
 
@@ -806,8 +806,8 @@ int main(int argc, char **argv)
     strcat(filename3, "\0");
 
     flog3 = fopen(filename3, "wb");
-    char real_time_metrics[] = "til_720_z1, til_1080_z1, til_4k_z1, til_720_z2, til_1080_z2, til_4k_z2, til_720_z3, til_1080_z3, til_4k_z3, z1_bit, z2_bit, z3_bit, qt_sw_z1, qt_sw_z2, qt_sw_z3, total_stall, start_time, segment_avg_latency, session_qoe\n";
-    fprintf(flog3, "Seg_no, %s", real_time_metrics);
+    char real_time_metrics[] = "til_720_z1,til_1080_z1,til_4k_z1,til_720_z2,til_1080_z2,til_4k_z2,til_720_z3,til_1080_z3,til_4k_z3,z1_bit,z2_bit,z3_bit,qt_sw_z1,qt_sw_z2,qt_sw_z3,total_stall,start_time,segment_avg_latency,session_qoe\n";
+    fprintf(flog3, "Seg_no,%s", real_time_metrics);
     */
 
     curl = curl_easy_init();
@@ -1695,7 +1695,7 @@ int main(int argc, char **argv)
             for (jTile = 0; jTile < len_viewport; jTile++)
             {
                 // fprintf(flog1,"Zone, Tile_no, Seg_no, Reso, Seg_d_size, Seg_d_time, Bitrate, Buf_lev, Buf_limit, Elapsed, Ref_vp, Local_avg");
-                fprintf(flog1, "Z1, %d, %d, %s, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf\n", jTile, i, z1_res[jTile], z1_ss[jTile], z1_st[jTile], z1_bit[jTile], z1_bit1[jTile], buffer_time, BUFFER_LIMIT, z1_el[jTile], z1_rv[jTile], z1_la[jTile]);
+                fprintf(flog1, "Z1,%d,%d,%s,%lf,%lf,%lf,%lf,%lf,%d,%lf,%lf,%lf\n", jTile, i, z1_res[jTile], z1_ss[jTile], z1_st[jTile], z1_bit[jTile], z1_bit1[jTile], buffer_time, BUFFER_LIMIT, z1_el[jTile], z1_rv[jTile], z1_la[jTile]);
                 
                 avg_latency_segment += z1_st[jTile];
             }
@@ -1703,7 +1703,7 @@ int main(int argc, char **argv)
             for (int tile = 0; tile <cnt2; tile++)
             {
                 // fprintf(flog1,"Zone, Tile_no, Seg_no, Reso, Seg_d_size, Seg_d_time, Bitrate, Buf_lev, Buf_limit, Elapsed, Ref_vp, Local_avg");
-                fprintf(flog1, "Z2, %d, %d, %s, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf\n", tile, i, z2_res[tile], z2_ss[tile], z2_st[tile], z2_bit[tile], z2_bit1[tile], buffer_time, BUFFER_LIMIT, z2_el[tile], z2_rv[tile], z2_la[tile]);
+                fprintf(flog1, "Z2,%d,%d,%s,%lf,%lf,%lf,%lf,%lf,%d,%lf,%lf,%lf\n", tile, i, z2_res[tile], z2_ss[tile], z2_st[tile], z2_bit[tile], z2_bit1[tile], buffer_time, BUFFER_LIMIT, z2_el[tile], z2_rv[tile], z2_la[tile]);
                 
                 avg_latency_segment += z2_st[tile];
             }
@@ -1711,7 +1711,7 @@ int main(int argc, char **argv)
             for (int tile = 0; tile < cnt3; tile++)
             {
                 // fprintf(flog1,"Zone, Tile_no, Seg_no, Reso, Seg_d_size, Seg_d_time, Bitrate, Buf_lev, Buf_limit, Elapsed, Ref_vp, Local_avg");
-                fprintf(flog1, "Z3, %d, %d, %s, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf\n", tile, i, z3_res[tile], z3_ss[tile], z3_st[tile], z3_bit[tile], z3_bit1[tile], buffer_time, BUFFER_LIMIT, z3_el[tile], z3_rv[tile], z3_la[tile]);
+                fprintf(flog1, "Z3,%d,%d,%s,%lf,%lf,%lf,%lf,%lf,%d,%lf,%lf,%lf\n", tile, i, z3_res[tile], z3_ss[tile], z3_st[tile], z3_bit[tile], z3_bit1[tile], buffer_time, BUFFER_LIMIT, z3_el[tile], z3_rv[tile], z3_la[tile]);
                 
                 avg_latency_segment += z1_st[tile];
             } 
@@ -1781,7 +1781,7 @@ int main(int argc, char **argv)
             // Update cumulative session metrics in real time (per segment)
 
             /*
-            fprintf(flog3, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %.6lf, %lf, %.6lf\n", i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, startup_time, avg_latency_segment, qoe);
+            fprintf(flog3, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.6lf,%.6lf,%.6lf,%d,%d,%d,%.6lf,%.6lf,%lf,%.6lf\n", i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, startup_time, avg_latency_segment, qoe);
             */
 
 
@@ -1831,7 +1831,7 @@ int main(int argc, char **argv)
 
         qoe = calculateQoE(i, cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, switchVp, switchAdj, switchOut, stall_len, startup_time, curr_duration);
 
-        fprintf(flog2, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %.6lf, %.6lf, %.6lf, %d, %d, %d, %.6lf, %d, %.6lf, %.6lf\n", cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, stall_count, startup_time, qoe);
+        fprintf(flog2, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%.6lf,%.6lf,%.6lf,%d,%d,%d,%.6lf,%d,%.6lf,%.6lf\n", cont720z1, cont1080z1, cont4kz1, cont720z2, cont1080z2, cont4kz2, cont720z3, cont1080z3, cont4kz3, ((double)avgbitratez1 / (double)(contz1 + stall_count_vp)), ((double)avgbitratez2 / (double)(contz2 + stall_count_adj)), ((double)avgbitratez3 / (double)(contz3 + stall_count_out)), switchVp, switchAdj, switchOut, stall_len, stall_count, startup_time, qoe);
 
         fprintf(flog, "%lu.%06lu;%.6lf;%.6lf;%.6lf;%d;%d;%d;%d\n", end.tv_sec, end.tv_usec, tvdiff_secs(end, beg), startup_time, stall_len, stall_count, switchVp, switchAdj, switchOut);
         printf("%lu.%06lu;%.6lf;%.6lf;%.6lf;%d;%d;%d;%d\n", end.tv_sec, end.tv_usec, tvdiff_secs(end, beg), startup_time, stall_len, stall_count, switchVp, switchAdj, switchOut);
