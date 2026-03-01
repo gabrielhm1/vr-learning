@@ -6,15 +6,45 @@ import csv
 # Script to build the environment table by running experiments and collecting metrics (runs on Kubernetes master)
 
 # Configuration and API endpoints
-CSV_FILE = "/users/marcosbh/data/sample.csv"
+CSV_FILE = "/users/marcosbh/data/result.csv"
 FLASK_URL = "http://10.2.64.143:8000/start"
 PROMETHEUS_URL = "http://10.100.246.192:9090/"
 DEPLOYMENT_NAME = "vr-deployment"
+NAMESPACE = "default"
 
 # Experiment parameters
-MAX_PODS = 10
-MAX_CLIENTS = 15
-SESSION_DURATION = [30, 40, 50, 60, 70, 80, 90] # in seconds
+MAX_PODS = 20
+MAX_CLIENTS = 30
+MAX_DELAY = 20
+SESSION_DURATION = 60 # in seconds
+
+WORKER_IP = "10.2.64.137"
+USER = "marcosbh"
+INTERFACE = "eno1"
+
+def run_remote_command(command):
+    """Executes a command on the worker node via SSH."""
+    ssh_cmd = ["ssh", f"{USER}@{WORKER_IP}", command]
+    try:
+        subprocess.run(
+            ssh_cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,  # keep stderr while debugging
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Warning: Remote command failed: {command}")
+        print(e.stderr)
+
+def set_network(delay_ms):
+    """Applies tc netem rules on the worker node."""
+    clean_cmd = f"sudo tc qdisc del dev {INTERFACE} root"
+    run_remote_command(clean_cmd)
+
+    if delay_ms > 0:
+        netem_cmd = f"sudo tc qdisc add dev {INTERFACE} root netem delay {delay_ms}ms"
+        run_remote_command(netem_cmd)
 
 def scale_pods(num_pods):
     """Scale Kubernetes deployment to specified number of replicas and wait for readiness."""
@@ -73,16 +103,15 @@ def run_experiment(num_pods, num_clients, session_duration):
 if __name__ == "__main__":
     # Initialize CSV file with headers
     csv_columns = [
-        "num_pods", "num_clients", "session_duration_s",
+        "num_pods", "num_clients", "net_delay",
         "cpu_m", "mem_Mi", "net_rx_KBps", "net_tx_KBps",
         "avg_latency_s", "n_720_z1", "n_1080_z1", "n_4k_z1",
         "n_720_z2", "n_1080_z2", "n_4k_z2",
         "n_720_z3", "n_1080_z3", "n_4k_z3",
+        "z1_bit", "z2_bit", "z3_bit",
         "n_sw_z1", "n_sw_z2", "n_sw_z3",
-        "total_stall", "start_time",
-        "res_term_z1", "res_term_z2", "res_term_z3",
-        "sw_term_z1", "sw_term_z2", "sw_term_z3",
-        "stall_term", "QoE"
+        "total_stall", "stall_count", 
+        "start_time", "session_qoe"
     ]
 
     with open(CSV_FILE, "w", newline="") as f:
@@ -92,27 +121,36 @@ if __name__ == "__main__":
     for num_pods in range(1, MAX_PODS + 1):
         scale_pods(num_pods)
         for num_clients in range(1, MAX_CLIENTS + 1):
-            for session_duration in SESSION_DURATION:
-                print(f"Running Experiment: Pods = {num_pods}, Clients = {num_clients}, Duration = {session_duration} s")
+            for net_delay in range(0, MAX_DELAY + 1):
+                set_network(net_delay)
+                print(f"Running Experiment: Pods = {num_pods}, Clients = {num_clients}, Delay = {net_delay} ms")
 
-                data = run_experiment(num_pods, num_clients, session_duration)
+                data = run_experiment(num_pods, num_clients, SESSION_DURATION)
 
                 # Prometheus queries for metrics
-                query_cpu = f'avg(sum by (pod) (rate(container_cpu_usage_seconds_total{{namespace="default", pod=~"{DEPLOYMENT_NAME}.*", container="{DEPLOYMENT_NAME}"}}[{session_duration}s])))'
-                query_mem = f'avg(sum by (pod) (avg_over_time(container_memory_working_set_bytes{{namespace="default",pod=~"{DEPLOYMENT_NAME}.*",container="{DEPLOYMENT_NAME}"}}[{session_duration}s])))'
-                query_rx = f'avg(sum(rate(container_network_receive_bytes_total{{namespace="default", pod=~"{DEPLOYMENT_NAME}.*"}}[{session_duration}s])) by (pod))'
-                query_tx = f'avg(sum(rate(container_network_transmit_bytes_total{{namespace="default", pod=~"{DEPLOYMENT_NAME}.*"}}[{session_duration}s])) by (pod))'
+                # Prometheus queries for metrics
+                query_cpu = 'sum(irate(container_cpu_usage_seconds_total{namespace=' \
+                                '"' + NAMESPACE + '", pod=~"' + DEPLOYMENT_NAME + '.*"}[' + str(SESSION_DURATION) + 's])) by (pod)'
+
+                query_mem = 'sum(irate(container_memory_working_set_bytes{namespace=' \
+                            '"' + NAMESPACE + '", pod=~"' + DEPLOYMENT_NAME + '.*"}[' + str(SESSION_DURATION) + 's])) by (pod)'
+
+                query_received = 'sum(irate(container_network_receive_bytes_total{namespace=' \
+                                '"' + NAMESPACE + '", pod=~"' + DEPLOYMENT_NAME + '.*"}[' + str(SESSION_DURATION) + 's])) by (pod)'
+                query_transmit = 'sum(irate(container_network_transmit_bytes_total{namespace="' \
+                                + NAMESPACE + '", pod=~"' + DEPLOYMENT_NAME + '.*"}[' + str(SESSION_DURATION) + 's])) by (pod)'
+
 
                 # Fetch and convert metrics to appropriate units
                 cpu = int(get_value(fetch_prom(query_cpu)) * 1000)  # millicores
                 mem = int(get_value(fetch_prom(query_mem)) / 1048576)  # MiB
-                rx = int(get_value(fetch_prom(query_rx)) / 1000)  # KB/s
-                tx = int(get_value(fetch_prom(query_tx)) / 1000)  # KB/s
+                rx = int(get_value(fetch_prom(query_received)) / 1000)  # KB/s
+                tx = int(get_value(fetch_prom(query_transmit)) / 1000)  # KB/s
 
                 row_data = {
                     "num_pods": num_pods,
                     "num_clients": num_clients,
-                    "session_duration_s": session_duration, 
+                    "net_delay": net_delay,
                     "cpu_m": cpu,
                     "mem_Mi": mem,
                     "net_rx_KBps": rx,
@@ -125,4 +163,4 @@ if __name__ == "__main__":
                     writer = csv.writer(f)
                     writer.writerow([row_data.get(col, 0) for col in csv_columns])
 
-    print("Experiment complete, data saved to data/sample.csv")
+    print("Experiment complete, data saved to data/result.csv")
