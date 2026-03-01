@@ -9,6 +9,7 @@ def parse_latency(num_clients, base_path):
     # Read segment data for each client and extract latency
     for user_id in range(1, int(num_clients) + 1):
         segment_file = f"{base_path}/user_{user_id}/user_{user_id}-segment.csv"
+        latency = None
         try:
             with open(segment_file, mode="r") as f:
                 df = pd.read_csv(f)
@@ -22,26 +23,12 @@ def parse_latency(num_clients, base_path):
     # Return average latency across all clients
     return sum(results) / len (results)
 
-def parse_qoe(num_clients, session_duration, base_path):
+def parse_qoe_metrics(num_clients, base_path):
     """Calculate Quality of Experience (QoE) metrics for all clients."""
-    # --- QoE calculation parameters ---
-    # Weights for resolutions
-    w_4k = 5.00
-    w_1080 = 3.33
-    w_720 = 1.67
-
-    mu = 4.3  # stall penalty
-    lamda = 1  # zone switch penalty
-    omega = 4.3  # startup delay penalty
-    alphas = [0.7, 0.2, 0.1]  # zone weights
-
     results = []
     # Parse metrics for each client
     for user_id in range(1, int(num_clients) + 1):
-        segment_file = f"{base_path}/user_{user_id}/user_{user_id}-segment.csv"
         session_file = f"{base_path}/user_{user_id}/user_{user_id}-session.csv"
-
-        segment_data = pd.read_csv(segment_file)
         session_data = pd.read_csv(session_file)
 
         row = session_data.iloc[0]
@@ -49,53 +36,24 @@ def parse_qoe(num_clients, session_duration, base_path):
         # Initialize metrics dictionary for current client
         metrics = {}
 
-        metrics['total_stall'] = session_data.iloc[0][' total_stall']
-        metrics['start_time'] = session_data.iloc[0][' start_time']
+        metrics['total_stall'] = row.get(' total_stall', 0)
+        metrics['stall_count'] = row.get(' stall_count', 0)
+        metrics['start_time'] = row.get(' start_time', 0)
 
-        if session_duration > 0:
-            metrics['stall_term'] = metrics['total_stall'] / session_duration
-        else:
-            metrics['stall_term'] = 0
-        
-        # Calculate QoE per zone
-        total_score = 0
-        n_chunks = segment_data[' Seg_no'].max()
+        # Get QoE metrics per zone
         for i, zone in enumerate([1, 2, 3]):
             # Extract tiles per zone
-            n_720 = row.get(f' til_720_z{zone}', 0)
-            n_1080 = row.get(f' til_1080_z{zone}', 0)
-            n_4k = row.get(f' til_4k_z{zone}', 0)
-
-            metrics[f'n_720_z{zone}'] = n_720
-            metrics[f'n_1080_z{zone}'] = n_1080
-            metrics[f'n_4k_z{zone}'] = n_4k
-
-            n_tiles = n_720 + n_1080 + n_4k
+            metrics[f'n_720_z{zone}'] = row.get(f'til_720_z{zone}', 0)
+            metrics[f'n_1080_z{zone}'] = row.get(f' til_1080_z{zone}', 0)
+            metrics[f'n_4k_z{zone}'] = row.get(f' til_4k_z{zone}', 0)
 
             # Extract switch counts per zone
-            n_switches = row.get(f' qt_sw_z{zone}')
+            metrics[f'n_sw_z{zone}'] = row.get(f' qt_sw_z{zone}', 0)
 
-            if n_tiles > 0:
-                q_res = (w_720 * n_720 + w_1080 * n_1080 + w_4k * n_4k) / n_tiles
-            else:
-                q_res = 0
+            # Extract bitrate
+            metrics[f'z{zone}_bit'] = row.get(f' z{zone}_bit', 0)
 
-            if n_chunks > 0:
-                q_sw = n_switches / n_chunks
-            else:
-                q_sw = 0
-
-            per_zone = q_res - lamda * q_sw
-            total_score += alphas[i] * per_zone
-
-            # Save relevant metrics 
-            metrics[f'n_sw_z{zone}'] = n_switches
-            metrics[f'res_term_z{zone}'] = q_res
-            metrics[f'sw_term_z{zone}'] = q_sw
-
-        qoe = total_score - mu * metrics['stall_term'] - omega * metrics['start_time']
-
-        metrics['overall_qoe'] = qoe
+        metrics['session_qoe'] = row.get(' session_qoe', 0)
         results.append(metrics)
 
     # Calculate average metrics across all clients
