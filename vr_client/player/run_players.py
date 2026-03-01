@@ -90,7 +90,7 @@ def start_players():
     # Parse experiment results and compute QoE metrics
     try:
         avg_latency = parse.parse_latency(num_clients, base_path)
-        qoe_metrics = parse.parse_qoe(num_clients, session_duration, base_path)
+        qoe_metrics = parse.parse_qoe_metrics(num_clients, base_path)
     except Exception as e:
         return jsonify({"error": f"Parsing failed: {e}"})
 
@@ -99,19 +99,15 @@ def start_players():
         "n_720_z1", "n_1080_z1", "n_4k_z1",
         "n_720_z2", "n_1080_z2", "n_4k_z2",
         "n_720_z3", "n_1080_z3", "n_4k_z3",
+        "z1_bit", "z2_bit", "z3_bit",
         "n_sw_z1", "n_sw_z2", "n_sw_z3",
-        "total_stall", "start_time",
-        "res_term_z1", "res_term_z2", "res_term_z3",
-        "sw_term_z1", "sw_term_z2", "sw_term_z3",
-        "stall_term"
+        "total_stall", "stall_count", 
+        "start_time", "session_qoe"
     ]
 
     payload = {
-        "num_clients": num_clients,
-        "num_pods": num_pods,
         "avg_latency_s": avg_latency,
         **{k: qoe_metrics.get(k, 0) for k in metric_keys}, 
-        "QoE": qoe_metrics['overall_qoe']
     }
 
     # Clean up experiment logs after parsing
