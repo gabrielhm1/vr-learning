@@ -238,15 +238,13 @@ class VrLearning(gym.Env):
                 if response.status_code == 200:
                     data = response.json()
                     # Save client-side metrics
-                    self.deploymentList[0].latency = data.get('avg_latency_s', 0)
-                    self.deploymentList[0].stall_duration = data.get('total_stall', 0)
-                    self.deploymentList[0].stall_count = data.get('stall_count', 0)
             except Exception as e:
                 logging.error(f"Failed to start VR session: {e}")
 
         # Update observation before reward calculation:
             for d in self.deploymentList:
                 d.update_obs_k8s()
+                d.update_obs_client(data)
         else:
             self.simulation_update()
 
@@ -412,23 +410,23 @@ class VrLearning(gym.Env):
         # "cpu"
         # "mem"
         # "requests"
-
+        d = self.deploymentList[ID_VR]
         # Return ob
-        ob = (
-                self.deploymentList[ID_VR].num_clients,
-                self.deploymentList[ID_VR].network_delay,
-                self.deploymentList[ID_VR].num_pods,
-                self.deploymentList[ID_VR].desired_replicas,
-                self.deploymentList[ID_VR].cpu_usage,
-                self.deploymentList[ID_VR].mem_usage,
-                self.deploymentList[ID_VR].received_traffic,
-                self.deploymentList[ID_VR].transmit_traffic,
-                self.deploymentList[ID_VR].latency,
-                self.deploymentList[ID_VR].stall_duration,
-                self.deploymentList[ID_VR].stall_count
-            )
+        ob = [
+                d.num_clients,
+                d.network_delay,
+                d.num_pods,
+                d.desired_replicas,
+                d.cpu_usage,
+                d.mem_usage,
+                d.received_traffic,
+                d.transmit_traffic
+            ]
+        
+        for metric in d.client_metrics:
+            ob.append(getattr(d, metric))
 
-        return ob
+        return tuple(ob)
 
     def get_observation_space(self):
             return spaces.Box(
@@ -443,7 +441,10 @@ class VrLearning(gym.Env):
                     0,  # Average Number of transmit traffic
                     0,  # Latency
                     0,  # Stall duration
-                    0   # Stall count
+                    0,   # Stall count
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, # n_quality (9)
+                    0, 0, 0,                   # bitrates (3)
+                    0, 0, 0                    # n_sw (3)
                 ]), high=np.array([
                     self.max_clients, # Number of clients
                     self.max_delay, # Network delay
@@ -455,7 +456,10 @@ class VrLearning(gym.Env):
                     get_max_traffic(),  # Average Number of transmit traffic
                     get_max_latency(),
                     get_max_stall_duration(),
-                    get_max_stall_count()
+                    get_max_stall_count(),
+                    100, 100, 100, 100, 100, 100, 100, 100, 100, # Max tiles per quality
+                    50000, 50000, 50000,                         # Max bitrate (kbps)
+                    100, 100, 100                                # Max switches
                 ]),
                 dtype=np.float32
             )
@@ -523,41 +527,40 @@ class VrLearning(gym.Env):
         file = open(obs_file, 'a+', newline='')  # append
         # file = open(file_name, 'w', newline='') # new
         fields = ["date"]
+        for d in self.deploymentList:
+            fields.extend([
+                d.name + '_num_clients', d.name + '_network_delay', 
+                d.name + '_num_pods', d.name + '_desired_replicas',
+                d.name + '_cpu_usage', d.name + '_mem_usage', 
+                d.name + '_traffic_in', d.name + '_traffic_out'
+            ])
+            # Add the new client metrics to the CSV header
+            for metric in d.client_metrics:
+                fields.append(d.name + '_' + metric)
+
         with file:
-            for d in self.deploymentList:
-                fields.append(d.name + '_num_clients')
-                fields.append(d.name + '_network_delay')
-                fields.append(d.name + '_num_pods')
-                fields.append(d.name + '_desired_replicas')
-                fields.append(d.name + '_cpu_usage')
-                fields.append(d.name + '_mem_usage')
-                fields.append(d.name + '_traffic_in')
-                fields.append(d.name + '_traffic_out')
-                fields.append(d.name + '_latency')
-                fields.append(d.name + '_stall_duration')
-                fields.append(d.name + '_stall_count')
-            logging.info("Fields: " + str(fields))
-            
             writer = csv.DictWriter(file, fieldnames=fields)
-            # writer.writeheader() # write header
+            
+            # Build the row dictionary
+            row = {
+                'date': date,
+                'vr-deployment_num_clients': int(obs[0]),
+                'vr-deployment_network_delay': int(obs[1]),
+                'vr-deployment_num_pods': int(obs[2]),
+                'vr-deployment_desired_replicas': int(obs[3]),
+                'vr-deployment_cpu_usage': int(obs[4]),
+                'vr-deployment_mem_usage': int(obs[5]),
+                'vr-deployment_traffic_in': int(obs[6]),
+                'vr-deployment_traffic_out': int(obs[7])
+            }
+            
+            # Dynamically add the rest of the metrics from the observation array
+            for i, metric in enumerate(self.deploymentList[0].client_metrics):
+                # obs[8] is the first new metric (n_720_z1)
+                row['vr-deployment_' + metric] = obs[8 + i]
+                
+            writer.writerow(row)
 
-
-            writer.writerow(
-                {'date': date,
-                 'vr-deployment_num_clients': int("{}".format(obs[0])),
-                 'vr-deployment_network_delay': int("{}".format(obs[1])),
-                 'vr-deployment_num_pods': int("{}".format(obs[2])),
-                 'vr-deployment_desired_replicas': int("{}".format(obs[3])),
-                 'vr-deployment_cpu_usage': int("{}".format(obs[4])),
-                 'vr-deployment_mem_usage': int("{}".format(obs[5])),
-                 'vr-deployment_traffic_in': int("{}".format(obs[6])),
-                 'vr-deployment_traffic_out': int("{}".format(obs[7])),
-                 'vr-deployment_latency': float("{:.3f}".format(obs[8])),
-                 'vr-deployment_stall_duration': float("{:.3f}".format(obs[9])),
-                 'vr-deployment_stall_count': int("{}".format(obs[10]))
-                 }
-            )
-        return
     def create_csv_file(self, file_name):
         file = open(file_name, 'w', newline='')
         fields = ['date']
@@ -570,9 +573,10 @@ class VrLearning(gym.Env):
             fields.append(d.name + '_mem_usage')
             fields.append(d.name + '_traffic_in')
             fields.append(d.name + '_traffic_out')
-            fields.append(d.name + '_latency')
-            fields.append(d.name + '_stall_duration')
-            fields.append(d.name + '_stall_count')
+            
+            for metric in d.client_metrics:
+                fields.append(d.name + '_' + metric)
+
         with file:
             writer = csv.DictWriter(file, fieldnames=fields)
             writer.writeheader()  # write header
