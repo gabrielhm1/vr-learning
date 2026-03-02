@@ -106,7 +106,7 @@ def start_players():
     ]
 
     payload = {
-        "avg_latency_s": avg_latency,
+        "latency": avg_latency,
         **{k: qoe_metrics.get(k, 0) for k in metric_keys}, 
     }
 

@@ -11,6 +11,7 @@ FLASK_URL = "http://10.2.64.143:8000/start"
 PROMETHEUS_URL = "http://10.100.246.192:9090/"
 DEPLOYMENT_NAME = "vr-deployment"
 NAMESPACE = "default"
+JOB_NAME = "kubernetes-cadvisor"
 
 # Experiment parameters
 MAX_PODS = 20
@@ -105,7 +106,7 @@ if __name__ == "__main__":
     csv_columns = [
         "num_pods", "num_clients", "net_delay",
         "cpu_m", "mem_Mi", "net_rx_KBps", "net_tx_KBps",
-        "avg_latency_s", "n_720_z1", "n_1080_z1", "n_4k_z1",
+        "latency", "n_720_z1", "n_1080_z1", "n_4k_z1",
         "n_720_z2", "n_1080_z2", "n_4k_z2",
         "n_720_z3", "n_1080_z3", "n_4k_z3",
         "z1_bit", "z2_bit", "z3_bit",
@@ -118,9 +119,9 @@ if __name__ == "__main__":
         csv.writer(f).writerow(csv_columns)
 
     # Run experiments across all parameter combinations
-    for num_pods in range(1, MAX_PODS + 1):
-        scale_pods(num_pods)
-        for num_clients in range(1, MAX_CLIENTS + 1):
+    for num_clients in [1, MAX_CLIENTS]:
+        for num_pods in range(1, MAX_PODS + 1):
+            scale_pods(num_pods)
             for net_delay in range(0, MAX_DELAY + 1):
                 set_network(net_delay)
                 print(f"Running Experiment: Pods = {num_pods}, Clients = {num_clients}, Delay = {net_delay} ms")
@@ -128,17 +129,13 @@ if __name__ == "__main__":
                 data = run_experiment(num_pods, num_clients, SESSION_DURATION)
 
                 # Prometheus queries for metrics
-                # Prometheus queries for metrics
-                query_cpu = 'sum(irate(container_cpu_usage_seconds_total{namespace=' \
-                                '"' + NAMESPACE + '", pod=~"' + DEPLOYMENT_NAME + '.*"}[' + str(SESSION_DURATION) + 's])) by (pod)'
+                query_cpu = f'avg(sum(rate(container_cpu_usage_seconds_total{{job="{JOB_NAME}", namespace="{NAMESPACE}", pod=~"{DEPLOYMENT_NAME}.*", container!="", container!="POD"}}[{SESSION_DURATION}s])) by (pod))'
 
-                query_mem = 'sum(irate(container_memory_working_set_bytes{namespace=' \
-                            '"' + NAMESPACE + '", pod=~"' + DEPLOYMENT_NAME + '.*"}[' + str(SESSION_DURATION) + 's])) by (pod)'
+                query_mem = f'avg(sum(avg_over_time(container_memory_working_set_bytes{{job="{JOB_NAME}", namespace="{NAMESPACE}", pod=~"{DEPLOYMENT_NAME}.*", container!="", container!="POD"}}[{SESSION_DURATION}s])) by (pod))'
 
-                query_received = 'sum(irate(container_network_receive_bytes_total{namespace=' \
-                                '"' + NAMESPACE + '", pod=~"' + DEPLOYMENT_NAME + '.*"}[' + str(SESSION_DURATION) + 's])) by (pod)'
-                query_transmit = 'sum(irate(container_network_transmit_bytes_total{namespace="' \
-                                + NAMESPACE + '", pod=~"' + DEPLOYMENT_NAME + '.*"}[' + str(SESSION_DURATION) + 's])) by (pod)'
+                query_received = f'avg(sum(rate(container_network_receive_bytes_total{{job="{JOB_NAME}", namespace="{NAMESPACE}", pod=~"{DEPLOYMENT_NAME}.*"}}[{SESSION_DURATION}s])) by (pod))'
+
+                query_transmit = f'avg(sum(rate(container_network_transmit_bytes_total{{job="{JOB_NAME}", namespace="{NAMESPACE}", pod=~"{DEPLOYMENT_NAME}.*"}}[{SESSION_DURATION}s])) by (pod))'
 
 
                 # Fetch and convert metrics to appropriate units
