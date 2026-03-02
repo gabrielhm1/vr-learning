@@ -14,7 +14,6 @@ MAX_LATENCY = 1000 # latency in ms
 MAX_STALL_DURATION = 300 # stall in s
 MAX_STALL_COUNT = 300
 
-
 CPU_WEIGHT = 0.7
 MEM_WEIGHT = 0.3
 
@@ -102,6 +101,8 @@ class DeploymentStatus:  # Deployment Status (Workload)
         self.container_name = container_name
         # container image
         self.container_image = container_image
+        # job name
+        self.job_name = "kubernetes-cadvisor"
 
         # CPU & MEM threshold
         self.threshold = threshold
@@ -111,7 +112,7 @@ class DeploymentStatus:  # Deployment Status (Workload)
         self.mem_weight = MEM_WEIGHT
 
         # Pod Names
-        self.pod_names = ["pod-1"]
+        self.pod_names = ["vr-deployment.*"]
         # MAX Number of Pods
         self.max_pods = max_pods
         # MIN Number of Pods
@@ -171,14 +172,18 @@ class DeploymentStatus:  # Deployment Status (Workload)
         # time between API calls if failure happens
         self.sleep = 0.2
 
-        # App. Latency
-        self.latency = 0.0
+        # Initialize VR client metrics to 0
+        self.client_metrics = [
+            'latency', 'stall_duration', 'stall_count',
+            'n_720_z1', 'n_1080_z1', 'n_4k_z1',
+            'n_720_z2', 'n_1080_z2', 'n_4k_z2',
+            'n_720_z3', 'n_1080_z3', 'n_4k_z3',
+            'z1_bit', 'z2_bit', 'z3_bit',
+            'n_sw_z1', 'n_sw_z2', 'n_sw_z3'
+        ]
 
-        # Total stall duration of the VR 
-        self.stall_duration = 0.0
-
-        # Number of stalls
-        self.stall_count = 0
+        for metric in self.client_metrics:
+            setattr(self, metric, 0)
 
         # Network delay (Worker node)
         self.network_delay = 0.0
@@ -255,16 +260,13 @@ class DeploymentStatus:  # Deployment Status (Workload)
 
         # Get received / transmit traffic
         for p in self.pod_names:
-            query_cpu = 'sum(irate(container_cpu_usage_seconds_total{namespace=' \
-                        '"' + self.namespace + '", pod="' + p + '"}[' + get_session_duration() + '])) by (pod)'
+            query_cpu = f'avg(sum(rate(container_cpu_usage_seconds_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
 
-            query_mem = 'sum(irate(container_memory_working_set_bytes{namespace=' \
-                        '"' + self.namespace + '", pod="' + p + '"}[' + get_session_duration() + '])) by (pod)'
+            query_mem = f'avg(sum(avg_over_time(container_memory_working_set_bytes{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
 
-            query_received = 'sum(irate(container_network_receive_bytes_total{namespace=' \
-                             '"' + self.namespace + '", pod="' + p + '"}[' + get_session_duration() + '])) by (pod)'
-            query_transmit = 'sum(irate(container_network_transmit_bytes_total{namespace="' \
-                             + self.namespace + '", pod="' + p + '"}[' + get_session_duration() + '])) by (pod)'
+            query_received = f'avg(sum(rate(container_network_receive_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}"}}[{get_session_duration()}s])) by (pod))'
+
+            query_transmit = f'avg(sum(rate(container_network_transmit_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}"}}[{get_session_duration()}s])) by (pod))'
 
             # -------------- CPU ----------------
             results_cpu = self.fetch_prom(query_cpu)
@@ -275,7 +277,7 @@ class DeploymentStatus:  # Deployment Status (Workload)
             # -------------- MEM ----------------
             results_mem = self.fetch_prom(query_mem)
             if results_mem:
-                mem = int(float(results_mem[0]['value'][1]) / 1000000)  # saved as Mi
+                mem = int(float(results_mem[0]['value'][1]) / 1048576)  # saved as Mi
                 self.mem_usage += mem
 
             # -------------- Received Traffic  ----------------
@@ -296,6 +298,14 @@ class DeploymentStatus:  # Deployment Status (Workload)
         self.update_replicas()
 
         return
+
+    def update_obs_client(self, data):
+        """
+        Updates client-side VR metrics from the Flask response data.
+        """
+        for metric in self.client_metrics:
+            setattr(self, metric, data.get(metric, 0))
+
 
     def update_replicas(self):
         # min = 1
