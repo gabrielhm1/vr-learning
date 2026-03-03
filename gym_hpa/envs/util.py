@@ -40,39 +40,44 @@ def save_to_csv(file_name, episode, avg_pods, avg_latency, reward, execution_tim
         )
 
 
-def get_cost_reward(deployment_list):
-    reward = 0
+def get_stall_penalty(deployment_list):
+    # Scaling factors
+    scale_duration = 10.0  # seconds
+    scale_count = 5.0      # number of stalls
 
+    # Extract pod metrics
     for d in deployment_list:
-        num_pods = d.num_pods
-        desired_replicas = d.desired_replicas
-        if num_pods == desired_replicas:
-            reward += 1
+        stall_duration = d.stall_duration
+        stall_count = d.stall_count
+
+    # Calculate soft-scaled penalty (unbounded, continuous)
+    p_qoe = (stall_duration / scale_duration) + (stall_count / scale_count)
+
+    return p_qoe
+
+def get_cost_penalty(deployment_list):
+    for d in deployment_list:
+        cpu_usage = d.cpu_usage
+        cpu_limit = d.cpu_limit 
+
+    # Calculate utilization and ensure it doesn't exceed 1.0
+    utilization = min(1.0, cpu_usage / cpu_limit)
+    
+    # Penalty is the inverse of utilization
+    p_cost = 1.0 - utilization
+
+    return p_cost
+
+
+def get_qoe_reward(deployment_list):
+    alpha = 0.7 # stall weight
+    beta = 0.3 # cost weight
+
+    p_stall = get_stall_penalty(deployment_list)
+    p_cost = get_cost_penalty(deployment_list)
+    reward = - ((alpha * p_cost) + (beta * p_stall))
 
     return reward
-
-
-def get_latency_reward_redis(ID_MASTER, deployment_list):
-    # Calculate the redis latency based on the redis exporter
-    reward = float(deployment_list[ID_MASTER].latency)
-    if reward > 250.0:
-        reward = -250  # highest penalty over 250 ms
-    else:
-        reward = -float(deployment_list[ID_MASTER].latency)  # negative reward
-
-    return reward
-
-
-def get_latency_reward_online_boutique(ID_recommendation, deployment_list):
-    # Calculate the latency based on the GET / POST requests
-    reward = float(deployment_list[ID_recommendation].latency)
-    if reward > 3000.0:
-        reward = -3000  # highest penalty over 3 s
-    else:
-        reward = -float(deployment_list[ID_recommendation].latency)  # negative reward
-
-    return reward
-
 
 def get_num_pods(deployment_list):
     n = 0
