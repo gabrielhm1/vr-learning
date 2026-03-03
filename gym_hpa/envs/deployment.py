@@ -9,13 +9,19 @@ from kubernetes import client, config
 MAX_CPU = 10000  # cpu in m
 MAX_MEM = 10000  # memory in MiB
 MAX_TRAFFIC = 20000  # MAX Number of requests (in Kbit/s)
-MAX_LATENCY = 1000 # latency in ms
+MAX_LATENCY = 10000 # latency in ms
 
-MAX_STALL_DURATION = 300 # stall in s
-MAX_STALL_COUNT = 300
+# Max values for QoE metrics
+MAX_STALL_DURATION = 100 # stall in s
+MAX_STALL_COUNT = 80 # number of stalls
 
-CPU_WEIGHT = 0.7
-MEM_WEIGHT = 0.3
+# Number of tiles per zone
+MAX_TILES_Z1 = 100
+MAX_TILES_Z2 = 800
+MAX_TILES_Z3 = 4000
+
+# Number of quality switches
+MAX_SW = 10 
 
 VR_SESSION_DURATION = 60 # session duration in s
 
@@ -33,7 +39,7 @@ def get_vr_list(k8s, min, max):
         # 1
         DeploymentStatus(k8s, "vr-deployment", "default", "vr-deployment",
                          "marcosmagnocarvalho/vr-application:v1",
-                         max, min, 100, 100, 50, 50)
+                         max, min, 100, 100, 100, 100)
     ]
     return deployment_list
 
@@ -58,6 +64,17 @@ def get_max_stall_duration():
 
 def get_max_stall_count():
     return MAX_STALL_COUNT
+
+def get_max_tiles(zone):
+    if zone == 1:
+        return MAX_TILES_Z1
+    elif zone == 2:
+        return MAX_TILES_Z2
+    elif zone == 3:
+        return MAX_TILES_Z3
+    
+def get_max_sw():
+    return MAX_SW
 
 def convert_to_milli_cpu(value):
     new_value = int(value[:-1])
@@ -93,7 +110,7 @@ def convert_to_mega_memory(value):
 
 class DeploymentStatus:  # Deployment Status (Workload)
     def __init__(self, k8s, name, namespace, container_name, container_image, max_pods, min_pods,
-                 cpu_request, cpu_limit, mem_request, mem_limit, threshold=0.75):
+                 cpu_request, cpu_limit, mem_request, mem_limit):
         self.name = name
         # namespace
         self.namespace = namespace
@@ -104,15 +121,8 @@ class DeploymentStatus:  # Deployment Status (Workload)
         # job name
         self.job_name = "kubernetes-cadvisor"
 
-        # CPU & MEM threshold
-        self.threshold = threshold
-        # CPU weight for replica calculation
-        self.cpu_weight = CPU_WEIGHT
-        # MEM weight for replica calculation
-        self.mem_weight = MEM_WEIGHT
-
         # Pod Names
-        self.pod_names = ["vr-deployment.*"]
+        self.pod_names = "vr-deployment.*"
         # MAX Number of Pods
         self.max_pods = max_pods
         # MIN Number of Pods
@@ -122,7 +132,7 @@ class DeploymentStatus:  # Deployment Status (Workload)
         # Number of Pods in previous step
         self.num_previous_pods = 1  # Initialize as 1
         # Number of desired replicas
-        self.desired_replicas = 1
+        # self.desired_replicas = 1
 
         # CPU request (in m)
         self.cpu_request = cpu_request
@@ -133,12 +143,6 @@ class DeploymentStatus:  # Deployment Status (Workload)
         self.mem_request = mem_request
         # MEM limit (in MiB)
         self.mem_limit = mem_limit
-
-        # CPU Target (in m)
-        self.cpu_target = int(self.threshold * self.cpu_request)
-
-        # MEM Target (in MiB)
-        self.mem_target = int(self.threshold * self.mem_request)
 
         self.MAX_CPU = MAX_CPU  # cpu in m
         self.MAX_MEM = MAX_MEM  # memory in MiB
@@ -178,7 +182,6 @@ class DeploymentStatus:  # Deployment Status (Workload)
             'n_720_z1', 'n_1080_z1', 'n_4k_z1',
             'n_720_z2', 'n_1080_z2', 'n_4k_z2',
             'n_720_z3', 'n_1080_z3', 'n_4k_z3',
-            'z1_bit', 'z2_bit', 'z3_bit',
             'n_sw_z1', 'n_sw_z2', 'n_sw_z3'
         ]
 
@@ -259,43 +262,39 @@ class DeploymentStatus:  # Deployment Status (Workload)
         # logging.info("[Update obs] Current Pods: " + str(self.num_pods))
 
         # Get received / transmit traffic
-        for p in self.pod_names:
-            query_cpu = f'avg(sum(rate(container_cpu_usage_seconds_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
+        query_cpu = f'avg(sum(rate(container_cpu_usage_seconds_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
 
-            query_mem = f'avg(sum(avg_over_time(container_memory_working_set_bytes{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
+        query_mem = f'avg(sum(avg_over_time(container_memory_working_set_bytes{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
 
-            query_received = f'avg(sum(rate(container_network_receive_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}"}}[{get_session_duration()}s])) by (pod))'
+        query_received = f'avg(sum(rate(container_network_receive_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}"}}[{get_session_duration()}s])) by (pod))'
 
-            query_transmit = f'avg(sum(rate(container_network_transmit_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}"}}[{get_session_duration()}s])) by (pod))'
+        query_transmit = f'avg(sum(rate(container_network_transmit_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}"}}[{get_session_duration()}s])) by (pod))'
 
-            # -------------- CPU ----------------
-            results_cpu = self.fetch_prom(query_cpu)
-            if results_cpu:
-                cpu = int(float(results_cpu[0]['value'][1]) * 1000)  # saved as m
-                self.cpu_usage += cpu
+        # -------------- CPU ----------------
+        results_cpu = self.fetch_prom(query_cpu)
+        if results_cpu:
+            cpu = int(float(results_cpu[0]['value'][1]) * 1000)  # saved as m
+            self.cpu_usage = cpu
 
-            # -------------- MEM ----------------
-            results_mem = self.fetch_prom(query_mem)
-            if results_mem:
-                mem = int(float(results_mem[0]['value'][1]) / 1048576)  # saved as Mi
-                self.mem_usage += mem
+        # -------------- MEM ----------------
+        results_mem = self.fetch_prom(query_mem)
+        if results_mem:
+            mem = int(float(results_mem[0]['value'][1]) / 1048576)  # saved as Mi
+            self.mem_usage = mem
 
-            # -------------- Received Traffic  ----------------
-            results_received = self.fetch_prom(query_received)
-            if results_received:
-                rec = int(float(results_received[0]['value'][1]))
-                rec = int(rec / 1000)  # saved as KBit/s
-                self.received_traffic += rec
+        # -------------- Received Traffic  ----------------
+        results_received = self.fetch_prom(query_received)
+        if results_received:
+            rec = int(float(results_received[0]['value'][1]))
+            rec = int(rec / 1000)  # saved as KBit/s
+            self.received_traffic = rec
 
-            # -------------- Transmit Traffic  ----------------
-            results_transmit = self.fetch_prom(query_transmit)
-            if results_transmit:
-                trans = int(float(results_transmit[0]['value'][1]))
-                trans = int(trans / 1000)  # saved as KBit/s
-                self.transmit_traffic += trans
-
-        # Update Desired replicas
-        self.update_replicas()
+        # -------------- Transmit Traffic  ----------------
+        results_transmit = self.fetch_prom(query_transmit)
+        if results_transmit:
+            trans = int(float(results_transmit[0]['value'][1]))
+            trans = int(trans / 1000)  # saved as KBit/s
+            self.transmit_traffic = trans
 
         return
 
@@ -305,18 +304,6 @@ class DeploymentStatus:  # Deployment Status (Workload)
         """
         for metric in self.client_metrics:
             setattr(self, metric, data.get(metric, 0))
-
-
-    def update_replicas(self):
-        # min = 1
-        if self.desired_replicas == 0:
-            self.desired_replicas = 1
-
-        # max = should be equal to the maximum
-        if self.desired_replicas > self.max_pods:
-            self.desired_replicas = self.max_pods
-
-        return
 
     def fetch_prom(self, query):
         try:
@@ -343,7 +330,6 @@ class DeploymentStatus:  # Deployment Status (Workload)
         logging.info("[Deployment] Name: " + str(self.name))
         logging.info("[Deployment] Namespace: " + str(self.namespace))
         logging.info("[Deployment] Number of pods: " + str(self.num_pods))
-        logging.info("[Deployment] Desired Replicas: " + str(self.desired_replicas))
         logging.info("[Deployment] Pod Names: " + str(self.pod_names))
         logging.info("[Deployment] MAX Pods: " + str(self.max_pods))
         logging.info("[Deployment] MIN Pods: " + str(self.min_pods))
