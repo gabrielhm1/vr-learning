@@ -16,9 +16,8 @@ from gym import spaces
 from gym.utils import seeding
 
 # Number of Requests - Discrete Event
-from gym_hpa.envs.deployment import get_max_cpu, get_max_mem, get_max_traffic, get_max_latency, get_vr_list, get_max_stall_duration, get_max_stall_count, get_session_duration
-from gym_hpa.envs.util import save_to_csv, get_num_pods, get_cost_reward, \
-    get_latency_reward_online_boutique
+from gym_hpa.envs.deployment import get_max_cpu, get_max_mem, get_max_traffic, get_max_latency, get_vr_list, get_max_stall_duration, get_max_stall_count, get_session_duration, get_max_tiles, get_max_sw
+from gym_hpa.envs.util import save_to_csv, get_num_pods, get_qoe_reward
 
 # MIN and MAX Replication
 MIN_REPLICATION = 1
@@ -70,17 +69,15 @@ ID_MOVES = 1
 
 ID_VR = 0
 
-# Reward objectives
-LATENCY = 'latency'
-COST = 'cost'
-# TODO: stall objective
+# Reward objective
+QOE = 'qoe'
 
 class VrLearning(gym.Env):
     """Horizontal Scaling for VR in Kubernetes - an OpenAI gym environment"""
 
     metadata = {'render.modes': ['human', 'ansi', 'array']}
 
-    def __init__(self, k8s=False, goal_reward="cost", waiting_period=0.3):
+    def __init__(self, k8s=False, goal_reward="qoe", waiting_period=0.3):
         # Define action and observation space
         # They must be gym.spaces objects
 
@@ -389,16 +386,10 @@ class VrLearning(gym.Env):
         """ Calculate Rewards """
         # Reward based on Keyword!
         if self.constraint_max_pod_replicas:
-            if self.goal_reward == COST:
-                return -1  # penalty
-            elif self.goal_reward == LATENCY:
-                return -3000  # penalty
+                return None
 
         if self.constraint_min_pod_replicas:
-            if self.goal_reward == COST:
-                return -1  # penalty
-            elif self.goal_reward == LATENCY:
-                return -3000  # penalty
+                return None
 
         # Reward Calculation
         reward = self.calculate_reward()
@@ -416,7 +407,6 @@ class VrLearning(gym.Env):
                 d.num_clients,
                 d.network_delay,
                 d.num_pods,
-                d.desired_replicas,
                 d.cpu_usage,
                 d.mem_usage,
                 d.received_traffic,
@@ -433,23 +423,20 @@ class VrLearning(gym.Env):
                 low=np.array([
                     self.min_clients, # Number of clients
                     self.min_delay, # Network delay
-                    self.min_pods,  # Number of Pods  -- 1) recommendationservice
-                    self.min_pods,  # Desired Replicas
+                    self.min_pods,  # Number of Pods  -- 1) vr-deployment
                     0,  # CPU Usage (in m)
                     0,  # MEM Usage (in MiB)
                     0,  # Average Number of received traffic
                     0,  # Average Number of transmit traffic
                     0,  # Latency
                     0,  # Stall duration
-                    0,   # Stall count
+                    0,  # Stall count
                     0, 0, 0, 0, 0, 0, 0, 0, 0, # n_quality (9)
-                    0, 0, 0,                   # bitrates (3)
                     0, 0, 0                    # n_sw (3)
                 ]), high=np.array([
                     self.max_clients, # Number of clients
                     self.max_delay, # Network delay
                     self.max_pods,  # Number of Pods -- 1)
-                    self.max_pods,  # Desired Replicas
                     get_max_cpu(),  # CPU Usage (in m)
                     get_max_mem(),  # MEM Usage (in MiB)
                     get_max_traffic(),  # Average Number of received traffic
@@ -457,22 +444,24 @@ class VrLearning(gym.Env):
                     get_max_latency(),
                     get_max_stall_duration(),
                     get_max_stall_count(),
-                    100, 100, 100, 100, 100, 100, 100, 100, 100, # Max tiles per quality
-                    50000, 50000, 50000,                         # Max bitrate (kbps)
-                    100, 100, 100                                # Max switches
+                    get_max_tiles(1),
+                    get_max_tiles(1),
+                    get_max_tiles(1),
+                    get_max_tiles(2),
+                    get_max_tiles(2),
+                    get_max_tiles(2),
+                    get_max_tiles(3),
+                    get_max_tiles(3),
+                    get_max_tiles(3),
+                    get_max_sw(),
+                    get_max_sw(),
+                    get_max_sw(),
                 ]),
                 dtype=np.float32
             )
 
-    # calculates the desired replica count based on a target metric utilization
     def calculate_reward(self):
-        # Calculate Number of desired Replicas
-        reward = 0
-        if self.goal_reward == COST:
-            reward = get_cost_reward(self.deploymentList)
-        elif self.goal_reward == LATENCY:
-            reward = get_latency_reward_online_boutique(ID_VR, self.deploymentList)
-
+        reward = get_qoe_reward(self.deploymentList)
         return reward
 
     def simulation_update(self):
@@ -518,9 +507,6 @@ class VrLearning(gym.Env):
             self.deploymentList[i].transmit_traffic = int(sample[DEPLOYMENTS[i] + '_traffic_out'].values[0])
             self.deploymentList[i].latency = float("{:.3f}".format(sample[DEPLOYMENTS[i] + '_latency'].values[0]))
 
-        for d in self.deploymentList:
-            # Update Desired replicas
-            d.update_replicas()
         return
 
     def save_obs_to_csv(self, obs_file, obs, date, latency):
@@ -530,7 +516,6 @@ class VrLearning(gym.Env):
         for d in self.deploymentList:
             fields.extend([
                 d.name + '_num_clients', d.name + '_network_delay', 
-                d.name + '_num_pods', d.name + '_desired_replicas',
                 d.name + '_cpu_usage', d.name + '_mem_usage', 
                 d.name + '_traffic_in', d.name + '_traffic_out'
             ])
@@ -547,17 +532,16 @@ class VrLearning(gym.Env):
                 'vr-deployment_num_clients': int(obs[0]),
                 'vr-deployment_network_delay': int(obs[1]),
                 'vr-deployment_num_pods': int(obs[2]),
-                'vr-deployment_desired_replicas': int(obs[3]),
-                'vr-deployment_cpu_usage': int(obs[4]),
-                'vr-deployment_mem_usage': int(obs[5]),
-                'vr-deployment_traffic_in': int(obs[6]),
-                'vr-deployment_traffic_out': int(obs[7])
+                'vr-deployment_cpu_usage': int(obs[3]),
+                'vr-deployment_mem_usage': int(obs[4]),
+                'vr-deployment_traffic_in': int(obs[5]),
+                'vr-deployment_traffic_out': int(obs[6])
             }
             
             # Dynamically add the rest of the metrics from the observation array
             for i, metric in enumerate(self.deploymentList[0].client_metrics):
-                # obs[8] is the first new metric (n_720_z1)
-                row['vr-deployment_' + metric] = obs[8 + i]
+                # obs[7] is the first new metric (n_720_z1)
+                row['vr-deployment_' + metric] = obs[7 + i]
                 
             writer.writerow(row)
 
@@ -568,7 +552,6 @@ class VrLearning(gym.Env):
             fields.append(d.name + '_num_clients')
             fields.append(d.name + '_network_delay')
             fields.append(d.name + '_num_pods')
-            fields.append(d.name + '_desired_replicas')
             fields.append(d.name + '_cpu_usage')
             fields.append(d.name + '_mem_usage')
             fields.append(d.name + '_traffic_in')
