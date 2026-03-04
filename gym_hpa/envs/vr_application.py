@@ -1,7 +1,7 @@
 import os
 import csv
 import datetime
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import time
 from statistics import mean
@@ -21,7 +21,7 @@ from gym_hpa.envs.util import save_to_csv, get_num_pods, get_qoe_reward
 
 # MIN and MAX Replication
 MIN_REPLICATION = 1
-MAX_REPLICATION = 10
+MAX_REPLICATION = 30
 
 # MIN and MAX clients
 MIN_CLIENTS = 0
@@ -166,7 +166,7 @@ class VrLearning(gym.Env):
         self.csv_file_path = "../../datasets/real/" + self.deploymentList[0].namespace + "/v1/" + self.obs_csv
         os.makedirs(os.path.dirname(self.csv_file_path), exist_ok=True)
         if not os.path.isfile(self.csv_file_path):
-            self.create_csv_file = self.create_csv_file(self.csv_file_path)
+            self.create_csv_file(self.csv_file_path)
 
         self.df = pd.read_csv(self.csv_file_path)
 
@@ -230,6 +230,7 @@ class VrLearning(gym.Env):
                 "amount_pods": self.deploymentList[0].num_pods,
                 "session_duration": get_session_duration()
             }
+            data = {} 
             try:
                 response = requests.post(FLASK_URL, json=payload, timeout=300)
                 if response.status_code == 200:
@@ -238,7 +239,7 @@ class VrLearning(gym.Env):
             except Exception as e:
                 logging.error(f"Failed to start VR session: {e}")
 
-        # Update observation before reward calculation:
+            # Update observation before reward calculation:
             for d in self.deploymentList:
                 d.update_obs_k8s()
                 d.update_obs_client(data)
@@ -257,9 +258,8 @@ class VrLearning(gym.Env):
         logging.info('[Step {}] | Action (Deployment): {} | Action (Move): {} | Reward: {} | Total Reward: {}'.format(
             self.current_step, DEPLOYMENTS[0], MOVES[action], reward, self.total_reward))
 
-        ob = self.get_state()
-        date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.save_obs_to_csv(self.csv_file_path, np.array(ob), date, self.deploymentList[0].latency)
+        raw_ob, norm_ob = self.get_state()
+        self.save_obs_to_csv(self.csv_file_path, np.array(raw_ob), action, reward, self.episode_over)
 
         self.info = dict(
             total_reward=self.total_reward,
@@ -278,7 +278,7 @@ class VrLearning(gym.Env):
                         self.total_reward, self.execution_time)
 
         # return ob, reward, self.episode_over, self.info
-        return np.array(ob), reward, self.episode_over, self.info
+        return np.array(norm_ob), reward, self.episode_over, self.info
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -396,69 +396,47 @@ class VrLearning(gym.Env):
         return reward
 
     def get_state(self):
-        # Observations: metrics - 3 Metrics!!
-        # "number_pods"
-        # "cpu"
-        # "mem"
-        # "requests"
         d = self.deploymentList[ID_VR]
-        # Return ob
-        ob = [
-                d.num_clients,
-                d.network_delay,
-                d.num_pods,
-                d.cpu_usage,
-                d.mem_usage,
-                d.received_traffic,
-                d.transmit_traffic
-            ]
-        
+        # Get raw observation
+        raw_ob = [
+        d.num_clients, d.network_delay, d.num_pods,
+        d.cpu_usage, d.mem_usage, d.received_traffic, d.transmit_traffic
+        ]
         for metric in d.client_metrics:
-            ob.append(getattr(d, metric))
+            raw_ob.append(getattr(d, metric))
 
-        return tuple(ob)
+        # Define maximums
+        raw_max = [
+            self.max_clients, self.max_delay, self.max_pods,
+            get_max_cpu(), get_max_mem(), get_max_traffic(), get_max_traffic(),
+            get_max_latency(), get_max_stall_duration(), get_max_stall_count(),
+            get_max_tiles(1), get_max_tiles(1), get_max_tiles(1),
+            get_max_tiles(2), get_max_tiles(2), get_max_tiles(2),
+            get_max_tiles(3), get_max_tiles(3), get_max_tiles(3),
+            get_max_sw(), get_max_sw(), get_max_sw()
+        ]
+
+        # Define  minimums 
+        raw_min = [self.min_clients, self.min_delay, self.min_pods] + [0]*19
+
+        # Normalize to [0, 1]
+        norm_ob = []
+        for i in range(len(raw_ob)):
+            range_val = raw_max[i] - raw_min[i] 
+            val = (raw_ob[i] - raw_min[i]) / range_val
+            # Clip to ensure it strictly stays in [0, 1] bounds 
+            norm_ob.append(max(0.0, min(1.0, val)))
+
+        return tuple(raw_ob), tuple(norm_ob)
 
     def get_observation_space(self):
-            return spaces.Box(
-                low=np.array([
-                    self.min_clients, # Number of clients
-                    self.min_delay, # Network delay
-                    self.min_pods,  # Number of Pods  -- 1) vr-deployment
-                    0,  # CPU Usage (in m)
-                    0,  # MEM Usage (in MiB)
-                    0,  # Average Number of received traffic
-                    0,  # Average Number of transmit traffic
-                    0,  # Latency
-                    0,  # Stall duration
-                    0,  # Stall count
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, # n_quality (9)
-                    0, 0, 0                    # n_sw (3)
-                ]), high=np.array([
-                    self.max_clients, # Number of clients
-                    self.max_delay, # Network delay
-                    self.max_pods,  # Number of Pods -- 1)
-                    get_max_cpu(),  # CPU Usage (in m)
-                    get_max_mem(),  # MEM Usage (in MiB)
-                    get_max_traffic(),  # Average Number of received traffic
-                    get_max_traffic(),  # Average Number of transmit traffic
-                    get_max_latency(),
-                    get_max_stall_duration(),
-                    get_max_stall_count(),
-                    get_max_tiles(1),
-                    get_max_tiles(1),
-                    get_max_tiles(1),
-                    get_max_tiles(2),
-                    get_max_tiles(2),
-                    get_max_tiles(2),
-                    get_max_tiles(3),
-                    get_max_tiles(3),
-                    get_max_tiles(3),
-                    get_max_sw(),
-                    get_max_sw(),
-                    get_max_sw(),
-                ]),
-                dtype=np.float32
-            )
+        # 22 dimensions bounded between 0.0 and 1.0
+        return spaces.Box(
+            low=np.float32(0.0), 
+            high=np.float32(1.0), 
+            shape=(22,), 
+            dtype=np.float32
+        )
 
     def calculate_reward(self):
         reward = get_qoe_reward(self.deploymentList)
@@ -509,19 +487,24 @@ class VrLearning(gym.Env):
 
         return
 
-    def save_obs_to_csv(self, obs_file, obs, date, latency):
+    def save_obs_to_csv(self, obs_file, obs, action, reward, done):
+        """
+        Saves the transition (s, a, r, d) to CSV for offline Decision Transformer training.
+        """
         file = open(obs_file, 'a+', newline='')  # append
-        # file = open(file_name, 'w', newline='') # new
-        fields = ["date"]
+        date = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        # Define headers
+        fields = ['date', 'action', 'reward', 'done']
+        # Infrastructure fields
+        infra_metrics = ['num_clients', 'network_delay', 'num_pods', 'cpu_usage', 'mem_usage', 'traffic_in', 'traffic_out']
+
         for d in self.deploymentList:
-            fields.extend([
-                d.name + '_num_clients', d.name + '_network_delay', 
-                d.name + '_cpu_usage', d.name + '_mem_usage', 
-                d.name + '_traffic_in', d.name + '_traffic_out'
-            ])
-            # Add the new client metrics to the CSV header
+            for metric in infra_metrics:
+                fields.append(f"{d.name}_{metric}")
+
+            # Client fields
             for metric in d.client_metrics:
-                fields.append(d.name + '_' + metric)
+                fields.append(f"{d.name}_{metric}")
 
         with file:
             writer = csv.DictWriter(file, fieldnames=fields)
@@ -529,6 +512,9 @@ class VrLearning(gym.Env):
             # Build the row dictionary
             row = {
                 'date': date,
+                'action': action,
+                'reward': reward,
+                'done': int(done),
                 'vr-deployment_num_clients': int(obs[0]),
                 'vr-deployment_network_delay': int(obs[1]),
                 'vr-deployment_num_pods': int(obs[2]),
@@ -547,7 +533,7 @@ class VrLearning(gym.Env):
 
     def create_csv_file(self, file_name):
         file = open(file_name, 'w', newline='')
-        fields = ['date']
+        fields = ['date', 'action', 'reward', 'done']
         for d in self.deploymentList:
             fields.append(d.name + '_num_clients')
             fields.append(d.name + '_network_delay')
