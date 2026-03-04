@@ -1,5 +1,4 @@
 import logging
-import math
 import random
 import time
 import requests
@@ -121,8 +120,6 @@ class DeploymentStatus:  # Deployment Status (Workload)
         # job name
         self.job_name = "kubernetes-cadvisor"
 
-        # Pod Names
-        self.pod_names = "vr-deployment.*"
         # MAX Number of Pods
         self.max_pods = max_pods
         # MIN Number of Pods
@@ -239,11 +236,12 @@ class DeploymentStatus:  # Deployment Status (Workload)
         # self.update_replicas()
 
     def update_obs_k8s(self):
-        self.pod_names = []
-        pods = self.v1.list_namespaced_pod(namespace=self.namespace)
-        for p in pods.items:
-            if p.metadata.labels['app'] == self.name:
-                self.pod_names.append(p.metadata.name)
+        # Fetch deployment object 
+        self.deployment_object = self.apps_v1.read_namespaced_deployment(name=self.name, namespace=self.namespace)
+    
+        # Update pod counts
+        self.num_previous_pods = self.num_pods
+        self.num_pods = self.deployment_object.spec.replicas
 
         self.cpu_usage = 0
         self.mem_usage = 0
@@ -259,16 +257,16 @@ class DeploymentStatus:  # Deployment Status (Workload)
         # Update number of Pods
         self.num_pods = self.deployment_object.spec.replicas
 
-        # logging.info("[Update obs] Current Pods: " + str(self.num_pods))
+        prom_regex = f"{self.name}.*"
 
         # Get received / transmit traffic
-        query_cpu = f'avg(sum(rate(container_cpu_usage_seconds_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
+        query_cpu = f'avg(sum(rate(container_cpu_usage_seconds_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{prom_regex}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
 
-        query_mem = f'avg(sum(avg_over_time(container_memory_working_set_bytes{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
+        query_mem = f'avg(sum(avg_over_time(container_memory_working_set_bytes{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{prom_regex}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
 
-        query_received = f'avg(sum(rate(container_network_receive_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}"}}[{get_session_duration()}s])) by (pod))'
+        query_received = f'avg(sum(rate(container_network_receive_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{prom_regex}"}}[{get_session_duration()}s])) by (pod))'
 
-        query_transmit = f'avg(sum(rate(container_network_transmit_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{self.pod_names}"}}[{get_session_duration()}s])) by (pod))'
+        query_transmit = f'avg(sum(rate(container_network_transmit_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{prom_regex}"}}[{get_session_duration()}s])) by (pod))'
 
         # -------------- CPU ----------------
         results_cpu = self.fetch_prom(query_cpu)
@@ -330,7 +328,6 @@ class DeploymentStatus:  # Deployment Status (Workload)
         logging.info("[Deployment] Name: " + str(self.name))
         logging.info("[Deployment] Namespace: " + str(self.namespace))
         logging.info("[Deployment] Number of pods: " + str(self.num_pods))
-        logging.info("[Deployment] Pod Names: " + str(self.pod_names))
         logging.info("[Deployment] MAX Pods: " + str(self.max_pods))
         logging.info("[Deployment] MIN Pods: " + str(self.min_pods))
         logging.info("[Deployment] CPU Usage (in m): " + str(self.cpu_usage))
@@ -338,6 +335,8 @@ class DeploymentStatus:  # Deployment Status (Workload)
         logging.info("[Deployment] Received traffic (in Kbit/s): " + str(self.received_traffic))
         logging.info("[Deployment] Transmit traffic (in Kbit/s): " + str(self.transmit_traffic))
         logging.info("[Deployment] latency (in ms): " + str(self.latency))
+        logging.info("[Deployment] stall time (in s): " + str(self.stall_duration))
+        logging.info("[Deployment] stall count: " + str(self.stall_count))
 
     def update_deployment(self, new_replicas):
         # Get deployment object
