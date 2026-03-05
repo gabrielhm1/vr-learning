@@ -79,7 +79,7 @@ class VrLearning(gym.Env):
         self.current_step = 0
 
         # Actions identified by integers 0-n -> 15 actions!
-        self.num_actions = 15
+        self.num_actions = NUM_ACTIONS
 
         # Multi-Discrete
         # Deployment: Discrete 11
@@ -142,7 +142,11 @@ class VrLearning(gym.Env):
         if not os.path.isfile(self.csv_file_path):
             self.create_csv_file(self.csv_file_path)
 
-        self.df = pd.read_csv(self.csv_file_path)
+        if not self.k8s:
+            try:
+                self.df = pd.read_csv(self.csv_file_path)
+            except pd.errors.EmptyDataError:
+                logging.warning("Simulation CSV is empty! Please collect data on K8s first.")
 
     def run_remote_command(self, command, user=USER, ip=WORKER_IP):
         """Executes a command on the worker node via SSH."""
@@ -321,7 +325,7 @@ class VrLearning(gym.Env):
         # Define maximums
         raw_max = [
             self.max_clients, self.max_delay, self.max_pods,
-            get_max_cpu(), get_max_traffic(), get_max_traffic(),
+            get_max_cpu(), get_max_cpu(), get_max_traffic(), get_max_traffic(),
             get_max_latency(), get_max_stall_duration(), get_max_stall_count(),
             get_max_tiles(1), get_max_tiles(1), get_max_tiles(1),
             get_max_tiles(2), get_max_tiles(2), get_max_tiles(2),
