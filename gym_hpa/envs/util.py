@@ -29,14 +29,30 @@ def get_cost_penalty(deployment_list):
 
     return p_cost
 
+def get_thrashing_penalty(deployment_list):
+    for d in deployment_list:
+        current_pods = d.num_pods
+        previous_pods = d.num_previous_pods
+        max_pods = d.max_pods
+
+    # Calculate the absolute difference in pods
+    pod_delta = abs(current_pods - previous_pods)
+    
+    # Normalize by the maximum possible jump to keep the penalty bounded [0, 1]
+    p_thrash = pod_delta / max_pods
+
+    return p_thrash
+
 
 def get_qoe_reward(deployment_list):
-    alpha = 0.7 # stall weight
+    alpha = 0.6 # stall weight
     beta = 0.3 # cost weight
+    gamma = 0.1 # thrashing weight
 
     p_stall = get_stall_penalty(deployment_list)
     p_cost = get_cost_penalty(deployment_list)
-    reward = - ((alpha * p_stall) + (beta * p_cost))
+    p_thrasing = get_thrashing_penalty(deployment_list)
+    reward = - ((alpha * p_stall) + (beta * p_cost) + (gamma * p_thrasing))
 
     return reward
 
