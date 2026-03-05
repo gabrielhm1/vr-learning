@@ -1,1 +1,1 @@
-from gym_hpa.envs.vr_application import VrLearning
+from .vr_application import VrLearning

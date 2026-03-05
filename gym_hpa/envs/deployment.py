@@ -5,7 +5,7 @@ import requests
 from kubernetes import client, config 
 
 # Constants
-MAX_CPU = 105  # cpu in m
+MAX_CPU = 105  # cpu in m (defined as slightly above the limit)
 MAX_TRAFFIC = 20000  # MAX Number of requests (in Kbit/s)
 MAX_LATENCY = 10000 # latency in ms
 
@@ -140,19 +140,13 @@ class DeploymentStatus:  # Deployment Status (Workload)
         self.MAX_CPU = MAX_CPU  # cpu in m
         self.MAX_TRAFFIC = MAX_TRAFFIC  # MAX Number of requests
 
-        # Get dataset
-        # self.version = 'v1'
-        # self.df = pd.read_csv(
-        #     "../../datasets/real/" + self.namespace + "/" + self.version +
-        #     "/" + self.namespace + '_' + self.name + '.csv')
-
         # Average CPU Usage (in m)
-        self.cpu_usage = random.randint(1, get_max_cpu())  # sample['cpu'].values[0]
-        self.max_cpu = random.randint(1, self.cpu_limit)
+        self.cpu_usage = 0 
+        self.max_cpu = 0
 
         # Current Requests
-        self.received_traffic = random.randint(1, get_max_traffic())  # sample['traffic_in'].values[0]
-        self.transmit_traffic = random.randint(1, get_max_traffic())  # sample['traffic_out'].values[0]
+        self.received_traffic = 0  
+        self.transmit_traffic = 0
 
         # K8s enabled?
         self.k8s = k8s
@@ -395,3 +389,22 @@ class DeploymentStatus:  # Deployment Status (Workload)
         else:
             # logging.info("Constraint: MIN Pod Replicas! Desired replicas: " + str(replicas))
             env.constraint_min_pod_replicas = True
+
+    def scale_to(self, target_replicas, env):
+        """
+        Declarative scaling: directly sets the desired number of pods.
+        """
+        # Enforce boundaries just in case
+        target_replicas = max(self.min_pods, min(self.max_pods, target_replicas))
+        
+        # If the agent requests the same number of pods we already have, do nothing
+        if target_replicas == self.num_pods:
+            return
+
+        if self.k8s:  
+            # Patch deployment on the real k8s cluster
+            self.update_deployment(target_replicas)
+        else:
+            # Update the simulation state cleanly
+            self.num_previous_pods = self.num_pods
+            self.num_pods = target_replicas

@@ -9,11 +9,11 @@ import requests
 import random
 import subprocess
 
-import gym
+import gymnasium as gym
 import numpy as np
 import pandas as pd
-from gym import spaces
-from gym.utils import seeding
+from gymnasium import spaces
+from gymnasium.utils import seeding
 
 # Number of Requests - Discrete Event
 from gym_hpa.envs.deployment import get_max_cpu, get_max_traffic, get_max_latency, get_vr_list, get_max_stall_duration, get_max_stall_count, get_session_duration, get_max_tiles, get_max_sw
@@ -22,6 +22,8 @@ from gym_hpa.envs.util import save_to_csv, get_num_pods, get_qoe_reward
 # MIN and MAX Replication
 MIN_REPLICATION = 1
 MAX_REPLICATION = 30
+
+NUM_ACTIONS = MAX_REPLICATION
 
 # MIN and MAX clients
 MIN_CLIENTS = 0
@@ -39,34 +41,15 @@ WORKER_IP = "10.2.64.137"
 USER = "marcosbh"
 INTERFACE = "eno1"
 
-# Possible Actions (Discrete)
-ACTION_DO_NOTHING = 0
-ACTION_ADD_1_REPLICA = 1
-ACTION_ADD_2_REPLICA = 2
-ACTION_ADD_3_REPLICA = 3
-ACTION_ADD_4_REPLICA = 4
-ACTION_ADD_5_REPLICA = 5
-ACTION_ADD_6_REPLICA = 6
-ACTION_ADD_7_REPLICA = 7
-ACTION_TERMINATE_1_REPLICA = 8
-ACTION_TERMINATE_2_REPLICA = 9
-ACTION_TERMINATE_3_REPLICA = 10
-ACTION_TERMINATE_4_REPLICA = 11
-ACTION_TERMINATE_5_REPLICA = 12
-ACTION_TERMINATE_6_REPLICA = 13
-ACTION_TERMINATE_7_REPLICA = 14
-
 # Deployments
 DEPLOYMENTS = ["vr-deployment"]
 
-# Action Moves
-MOVES = ["None", "Add-1", "Add-2", "Add-3", "Add-4", "Add-5", "Add-6", "Add-7",
-         "Stop-1", "Stop-2", "Stop-3", "Stop-4", "Stop-5", "Stop-6", "Stop-7"]
+# Dynamically generate the moves list for your logging
+MOVES = [f"ScaleTo-{i}" for i in range(MIN_REPLICATION, MAX_REPLICATION + 1)]
 
 # IDs
 ID_DEPLOYMENTS = 0
 ID_MOVES = 1
-
 ID_VR = 0
 
 # Reward objective
@@ -96,7 +79,7 @@ class VrLearning(gym.Env):
         self.current_step = 0
 
         # Actions identified by integers 0-n -> 15 actions!
-        self.num_actions = 15
+        self.num_actions = NUM_ACTIONS
 
         # Multi-Discrete
         # Deployment: Discrete 11
@@ -154,12 +137,17 @@ class VrLearning(gym.Env):
 
         # Create CSV files
         print("Creating file")
-        self.csv_file_path = "../../datasets/real/" + self.deploymentList[ID_VR].namespace + "/v1/" + self.obs_csv
+        base_path = os.path.expanduser("~/vr-learning/datasets/real/")
+        self.csv_file_path = base_path + self.deploymentList[ID_VR].namespace + "/v1/" + self.obs_csv
         os.makedirs(os.path.dirname(self.csv_file_path), exist_ok=True)
         if not os.path.isfile(self.csv_file_path):
             self.create_csv_file(self.csv_file_path)
 
-        self.df = pd.read_csv(self.csv_file_path)
+        if not self.k8s:
+            try:
+                self.df = pd.read_csv(self.csv_file_path)
+            except pd.errors.EmptyDataError:
+                logging.warning("Simulation CSV is empty! Please collect data on K8s first.")
 
     def run_remote_command(self, command, user=USER, ip=WORKER_IP):
         """Executes a command on the worker node via SSH."""
@@ -199,12 +187,7 @@ class VrLearning(gym.Env):
 
         # Wait a few seconds if on real k8s cluster
         if self.k8s:
-            if action != ACTION_DO_NOTHING \
-                    and self.constraint_min_pod_replicas is False \
-                    and self.constraint_max_pod_replicas is False:
-                # logging.info('[Step {}] | Waiting {} seconds for enabling action ...'
-                # .format(self.current_step, self.waiting_period))
-                time.sleep(self.waiting_period)  # Wait a few seconds...
+            time.sleep(self.waiting_period)  # Wait a few seconds...
             
             # Random Walk for Clients (Change by -3 to +3 users per step)
             client_step = random.randint(-3, 3)
@@ -274,14 +257,17 @@ class VrLearning(gym.Env):
             save_to_csv(self.file_results, self.episode_count, mean(self.avg_pods), mean(self.avg_latency),
                         self.total_reward, self.execution_time)
 
+        terminated = self.episode_over
+        truncated = False
+
         # return ob, reward, self.episode_over, self.info
-        return np.array(norm_ob), reward, self.episode_over, self.info
+        return np.array(norm_ob, dtype=np.float32), float(reward), terminated, truncated, self.info
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
         """
         Reset the state of the environment and returns an initial observation.
         Returns
@@ -304,7 +290,7 @@ class VrLearning(gym.Env):
         self.current_clients = random.randint(self.min_clients, self.max_clients)
         self.current_delay = random.randint(self.min_delay, self.max_delay)
 
-        return np.array(self.get_state()[1])
+        return np.array(self.get_state()[1], dtype=np.float32), self.info
 
     def render(self, mode='human', close=False):
         # Render the environment to the screen
@@ -318,77 +304,15 @@ class VrLearning(gym.Env):
             # logging.info('[Take Action] MAX STEPS achieved, ending ...')
             self.episode_over = True
 
-        # ACTIONS
-        if action == ACTION_DO_NOTHING:
-            # logging.info("[Take Action] SELECTED ACTION: DO NOTHING ...")
-            pass
-
-        elif action == ACTION_ADD_1_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: ADD 1 Replica ...")
-            self.deploymentList[id].deploy_pod_replicas(1, self)
-
-        elif action == ACTION_ADD_2_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: ADD 2 Replicas ...")
-            self.deploymentList[id].deploy_pod_replicas(2, self)
-
-        elif action == ACTION_ADD_3_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: ADD 3 Replicas ...")
-            self.deploymentList[id].deploy_pod_replicas(3, self)
-
-        elif action == ACTION_ADD_4_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: ADD 4 Replicas ...")
-            self.deploymentList[id].deploy_pod_replicas(4, self)
-
-        elif action == ACTION_ADD_5_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: ADD 5 Replicas ...")
-            self.deploymentList[id].deploy_pod_replicas(5, self)
-
-        elif action == ACTION_ADD_6_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: ADD 6 Replicas ...")
-            self.deploymentList[id].deploy_pod_replicas(6, self)
-
-        elif action == ACTION_ADD_7_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: ADD 7 Replicas ...")
-            self.deploymentList[id].deploy_pod_replicas(7, self)
-
-        elif action == ACTION_TERMINATE_1_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: TERMINATE 1 Replica ...")
-            self.deploymentList[id].terminate_pod_replicas(1, self)
-
-        elif action == ACTION_TERMINATE_2_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: TERMINATE 2 Replicas ...")
-            self.deploymentList[id].terminate_pod_replicas(2, self)
-
-        elif action == ACTION_TERMINATE_3_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: TERMINATE 3 Replicas ...")
-            self.deploymentList[id].terminate_pod_replicas(3, self)
-
-        elif action == ACTION_TERMINATE_4_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: TERMINATE 4 Replicas ...")
-            self.deploymentList[id].terminate_pod_replicas(4, self)
-
-        elif action == ACTION_TERMINATE_5_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: TERMINATE 5 Replicas ...")
-            self.deploymentList[id].terminate_pod_replicas(5, self)
-
-        elif action == ACTION_TERMINATE_6_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: TERMINATE 6 Replicas ...")
-            self.deploymentList[id].terminate_pod_replicas(6, self)
-
-        elif action == ACTION_TERMINATE_7_REPLICA:
-            # logging.info("[Take Action] SELECTED ACTION: TERMINATE 7 Replicas ...")
-            self.deploymentList[id].terminate_pod_replicas(7, self)
-
-        else:
-            logging.info('[Take Action] Unrecognized Action: ' + str(action))
+        # Map the action (0 to 29) to the target replicas (1 to 30)
+        target_replicas = int(action) + MIN_REPLICATION
+        
+        # Send the declarative command to the deployment
+        self.deploymentList[id].scale_to(target_replicas, self)
 
     @property
     def get_reward(self):
         """ Calculate Rewards """
-        # Out of bounds penalty
-        if self.constraint_max_pod_replicas or self.constraint_min_pod_replicas:
-                return -2.0
-
         # Reward Calculation
         return self.calculate_reward()
 
@@ -405,7 +329,7 @@ class VrLearning(gym.Env):
         # Define maximums
         raw_max = [
             self.max_clients, self.max_delay, self.max_pods,
-            get_max_cpu(), get_max_cpu() get_max_traffic(), get_max_traffic(),
+            get_max_cpu(), get_max_cpu(), get_max_traffic(), get_max_traffic(),
             get_max_latency(), get_max_stall_duration(), get_max_stall_count(),
             get_max_tiles(1), get_max_tiles(1), get_max_tiles(1),
             get_max_tiles(2), get_max_tiles(2), get_max_tiles(2),
