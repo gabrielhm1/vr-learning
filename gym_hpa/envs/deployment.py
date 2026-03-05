@@ -402,3 +402,22 @@ class DeploymentStatus:  # Deployment Status (Workload)
         else:
             # logging.info("Constraint: MIN Pod Replicas! Desired replicas: " + str(replicas))
             env.constraint_min_pod_replicas = True
+
+    def scale_to(self, target_replicas, env):
+        """
+        Declarative scaling: directly sets the desired number of pods.
+        """
+        # Enforce boundaries just in case
+        target_replicas = max(self.min_pods, min(self.max_pods, target_replicas))
+        
+        # If the agent requests the same number of pods we already have, do nothing
+        if target_replicas == self.num_pods:
+            return
+
+        if self.k8s:  
+            # Patch deployment on the real k8s cluster
+            self.update_deployment(target_replicas)
+        else:
+            # Update the simulation state cleanly
+            self.num_previous_pods = self.num_pods
+            self.num_pods = target_replicas
