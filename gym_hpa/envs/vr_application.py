@@ -405,7 +405,7 @@ class VrLearning(gym.Env):
         # Define maximums
         raw_max = [
             self.max_clients, self.max_delay, self.max_pods,
-            get_max_cpu(), get_max_traffic(), get_max_traffic(),
+            get_max_cpu(), get_max_cpu() get_max_traffic(), get_max_traffic(),
             get_max_latency(), get_max_stall_duration(), get_max_stall_count(),
             get_max_tiles(1), get_max_tiles(1), get_max_tiles(1),
             get_max_tiles(2), get_max_tiles(2), get_max_tiles(2),

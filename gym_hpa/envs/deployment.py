@@ -5,7 +5,7 @@ import requests
 from kubernetes import client, config 
 
 # Constants
-MAX_CPU = 10000  # cpu in m
+MAX_CPU = 105  # cpu in m
 MAX_TRAFFIC = 20000  # MAX Number of requests (in Kbit/s)
 MAX_LATENCY = 10000 # latency in ms
 
