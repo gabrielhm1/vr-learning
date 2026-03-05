@@ -6,7 +6,6 @@ from kubernetes import client, config
 
 # Constants
 MAX_CPU = 10000  # cpu in m
-MAX_MEM = 10000  # memory in MiB
 MAX_TRAFFIC = 20000  # MAX Number of requests (in Kbit/s)
 MAX_LATENCY = 10000 # latency in ms
 
@@ -45,9 +44,6 @@ def get_vr_list(k8s, min, max):
 
 def get_max_cpu():
     return MAX_CPU
-
-def get_max_mem():
-    return MAX_MEM
 
 def get_max_traffic():
     return MAX_TRAFFIC
@@ -142,7 +138,6 @@ class DeploymentStatus:  # Deployment Status (Workload)
         self.mem_limit = mem_limit
 
         self.MAX_CPU = MAX_CPU  # cpu in m
-        self.MAX_MEM = MAX_MEM  # memory in MiB
         self.MAX_TRAFFIC = MAX_TRAFFIC  # MAX Number of requests
 
         # Get dataset
@@ -151,18 +146,13 @@ class DeploymentStatus:  # Deployment Status (Workload)
         #     "../../datasets/real/" + self.namespace + "/" + self.version +
         #     "/" + self.namespace + '_' + self.name + '.csv')
 
-        # CPU Usage Aggregated (in m)
+        # Average CPU Usage (in m)
         self.cpu_usage = random.randint(1, get_max_cpu())  # sample['cpu'].values[0]
-
-        # MEM Usage Aggregated (in MiB)
-        self.mem_usage = random.randint(1, get_max_mem())  # sample['mem'].values[0]
+        self.max_cpu = random.randint(1, self.cpu_limit)
 
         # Current Requests
         self.received_traffic = random.randint(1, get_max_traffic())  # sample['traffic_in'].values[0]
         self.transmit_traffic = random.randint(1, get_max_traffic())  # sample['traffic_out'].values[0]
-
-        # Throughput PING INLINE
-        # self.ping = 0
 
         # K8s enabled?
         self.k8s = k8s
@@ -244,7 +234,7 @@ class DeploymentStatus:  # Deployment Status (Workload)
         self.num_pods = self.deployment_object.spec.replicas
 
         self.cpu_usage = 0
-        self.mem_usage = 0
+        self.max_cpu = 0
         self.received_traffic = 0
         self.transmit_traffic = 0
 
@@ -259,14 +249,17 @@ class DeploymentStatus:  # Deployment Status (Workload)
 
         prom_regex = f"{self.name}.*"
 
-        # Get received / transmit traffic
+        # Average CPU
         query_cpu = f'avg(sum(rate(container_cpu_usage_seconds_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{prom_regex}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
 
-        query_mem = f'avg(sum(avg_over_time(container_memory_working_set_bytes{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{prom_regex}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
+        # Max CPU
+        query_max_cpu = f'max(sum(rate(container_cpu_usage_seconds_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{prom_regex}", container!="", container!="POD"}}[{get_session_duration()}s])) by (pod))'
 
-        query_received = f'avg(sum(rate(container_network_receive_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{prom_regex}"}}[{get_session_duration()}s])) by (pod))'
+        # Total Received Traffic (Sum of all pods)
+        query_received = f'sum(rate(container_network_receive_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{prom_regex}"}}[{get_session_duration()}s]))'
 
-        query_transmit = f'avg(sum(rate(container_network_transmit_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{prom_regex}"}}[{get_session_duration()}s])) by (pod))'
+        # Total Transmit Traffic (Sum of all pods)
+        query_transmit = f'sum(rate(container_network_transmit_bytes_total{{job="{self.job_name}", namespace="{self.namespace}", pod=~"{prom_regex}"}}[{get_session_duration()}s]))'
 
         # -------------- CPU ----------------
         results_cpu = self.fetch_prom(query_cpu)
@@ -274,11 +267,11 @@ class DeploymentStatus:  # Deployment Status (Workload)
             cpu = int(float(results_cpu[0]['value'][1]) * 1000)  # saved as m
             self.cpu_usage = cpu
 
-        # -------------- MEM ----------------
-        results_mem = self.fetch_prom(query_mem)
-        if results_mem:
-            mem = int(float(results_mem[0]['value'][1]) / 1048576)  # saved as Mi
-            self.mem_usage = mem
+        # -------------- CPU ----------------
+        results_max_cpu = self.fetch_prom(query_max_cpu)
+        if results_max_cpu:
+            max_cpu = int(float(results_max_cpu[0]['value'][1]) * 1000)  # saved as m
+            self.max_cpu = max_cpu
 
         # -------------- Received Traffic  ----------------
         results_received = self.fetch_prom(query_received)
@@ -331,7 +324,7 @@ class DeploymentStatus:  # Deployment Status (Workload)
         logging.info("[Deployment] MAX Pods: " + str(self.max_pods))
         logging.info("[Deployment] MIN Pods: " + str(self.min_pods))
         logging.info("[Deployment] CPU Usage (in m): " + str(self.cpu_usage))
-        logging.info("[Deployment] MEM Usage (in Mi): " + str(self.mem_usage))
+        logging.info("[Deployment] Max CPU (in m): " + str(self.max_cpu))
         logging.info("[Deployment] Received traffic (in Kbit/s): " + str(self.received_traffic))
         logging.info("[Deployment] Transmit traffic (in Kbit/s): " + str(self.transmit_traffic))
         logging.info("[Deployment] latency (in ms): " + str(self.latency))

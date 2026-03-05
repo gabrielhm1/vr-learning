@@ -16,7 +16,7 @@ from gym import spaces
 from gym.utils import seeding
 
 # Number of Requests - Discrete Event
-from gym_hpa.envs.deployment import get_max_cpu, get_max_mem, get_max_traffic, get_max_latency, get_vr_list, get_max_stall_duration, get_max_stall_count, get_session_duration, get_max_tiles, get_max_sw
+from gym_hpa.envs.deployment import get_max_cpu, get_max_traffic, get_max_latency, get_vr_list, get_max_stall_duration, get_max_stall_count, get_session_duration, get_max_tiles, get_max_sw
 from gym_hpa.envs.util import save_to_csv, get_num_pods, get_qoe_reward
 
 # MIN and MAX Replication
@@ -104,18 +104,6 @@ class VrLearning(gym.Env):
         #                      Stop-1[5], Stop-2[6], Stop-3[7], Stop-4[8]
 
         self.action_space = spaces.Discrete(self.num_actions)
-
-        # Observations: 22 Metrics! -> 2 * 11 = 22
-        # "number_pods"                     -> Number of deployed Pods
-        # "cpu_usage_aggregated"            -> via metrics-server
-        # "mem_usage_aggregated"            -> via metrics-server
-        # "cpu_requests"                    -> via metrics-server/pod
-        # "mem_requests"                    -> via metrics-server/pod
-        # "cpu_limits"                      -> via metrics-server
-        # "mem_limits"                      -> via metrics-server
-        # "lstm_cpu_prediction_1_step"      -> via pod annotation
-        # "lstm_cpu_prediction_5_step"      -> via pod annotation
-        # "average_number of requests"      -> Prometheus metric: sum(rate(http_server_requests_seconds_count[5m]))
 
         self.min_pods = MIN_REPLICATION
         self.max_pods = MAX_REPLICATION
@@ -409,7 +397,7 @@ class VrLearning(gym.Env):
         # Get raw observation
         raw_ob = [
         d.num_clients, d.network_delay, d.num_pods,
-        d.cpu_usage, d.mem_usage, d.received_traffic, d.transmit_traffic
+        d.cpu_usage, d.max_cpu, d.received_traffic, d.transmit_traffic
         ]
         for metric in d.client_metrics:
             raw_ob.append(getattr(d, metric))
@@ -417,7 +405,7 @@ class VrLearning(gym.Env):
         # Define maximums
         raw_max = [
             self.max_clients, self.max_delay, self.max_pods,
-            get_max_cpu(), get_max_mem(), get_max_traffic(), get_max_traffic(),
+            get_max_cpu(), get_max_traffic(), get_max_traffic(),
             get_max_latency(), get_max_stall_duration(), get_max_stall_count(),
             get_max_tiles(1), get_max_tiles(1), get_max_tiles(1),
             get_max_tiles(2), get_max_tiles(2), get_max_tiles(2),
@@ -489,7 +477,7 @@ class VrLearning(gym.Env):
 
         for i in range(len(DEPLOYMENTS)):
             self.deploymentList[i].cpu_usage = int(sample[DEPLOYMENTS[i] + '_cpu_usage'].values[0])
-            self.deploymentList[i].mem_usage = int(sample[DEPLOYMENTS[i] + '_mem_usage'].values[0])
+            self.deploymentList[i].max_cpu = int(sample[DEPLOYMENTS[i] + '_max_cpu'].values[0])
             self.deploymentList[i].received_traffic = int(sample[DEPLOYMENTS[i] + '_traffic_in'].values[0])
             self.deploymentList[i].transmit_traffic = int(sample[DEPLOYMENTS[i] + '_traffic_out'].values[0])
             self.deploymentList[i].latency = float("{:.3f}".format(sample[DEPLOYMENTS[i] + '_latency'].values[0]))
@@ -505,7 +493,7 @@ class VrLearning(gym.Env):
         # Define headers
         fields = ['date', 'action', 'reward', 'done']
         # Infrastructure fields
-        infra_metrics = ['num_clients', 'network_delay', 'num_pods', 'cpu_usage', 'mem_usage', 'traffic_in', 'traffic_out']
+        infra_metrics = ['num_clients', 'network_delay', 'num_pods', 'cpu_usage', 'max_cpu', 'traffic_in', 'traffic_out']
 
         for d in self.deploymentList:
             for metric in infra_metrics:
@@ -528,7 +516,7 @@ class VrLearning(gym.Env):
                 'vr-deployment_network_delay': int(obs[1]),
                 'vr-deployment_num_pods': int(obs[2]),
                 'vr-deployment_cpu_usage': int(obs[3]),
-                'vr-deployment_mem_usage': int(obs[4]),
+                'vr-deployment_max_cpu': int(obs[4]),
                 'vr-deployment_traffic_in': int(obs[5]),
                 'vr-deployment_traffic_out': int(obs[6])
             }
@@ -548,7 +536,7 @@ class VrLearning(gym.Env):
             fields.append(d.name + '_network_delay')
             fields.append(d.name + '_num_pods')
             fields.append(d.name + '_cpu_usage')
-            fields.append(d.name + '_mem_usage')
+            fields.append(d.name + '_max_cpu')
             fields.append(d.name + '_traffic_in')
             fields.append(d.name + '_traffic_out')
             
