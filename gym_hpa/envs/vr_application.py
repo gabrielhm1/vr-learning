@@ -397,16 +397,12 @@ class VrLearning(gym.Env):
     @property
     def get_reward(self):
         """ Calculate Rewards """
-        # Reward based on Keyword!
-        if self.constraint_max_pod_replicas:
-                return None
-
-        if self.constraint_min_pod_replicas:
-                return None
+        # Out of bounds penalty
+        if self.constraint_max_pod_replicas or self.constraint_min_pod_replicas:
+                return -2.0
 
         # Reward Calculation
-        reward = self.calculate_reward()
-        return reward
+        return self.calculate_reward()
 
     def get_state(self):
         d = self.deploymentList[ID_VR]
