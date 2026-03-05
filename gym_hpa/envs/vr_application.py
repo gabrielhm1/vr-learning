@@ -9,11 +9,11 @@ import requests
 import random
 import subprocess
 
-import gym
+import gymnasium as gym
 import numpy as np
 import pandas as pd
-from gym import spaces
-from gym.utils import seeding
+from gymnasium import spaces
+from gymnasium.utils import seeding
 
 # Number of Requests - Discrete Event
 from gym_hpa.envs.deployment import get_max_cpu, get_max_traffic, get_max_latency, get_vr_list, get_max_stall_duration, get_max_stall_count, get_session_duration, get_max_tiles, get_max_sw
@@ -137,7 +137,8 @@ class VrLearning(gym.Env):
 
         # Create CSV files
         print("Creating file")
-        self.csv_file_path = "../../datasets/real/" + self.deploymentList[ID_VR].namespace + "/v1/" + self.obs_csv
+        base_path = os.path.expanduser("~/vr-learning/datasets/real/")
+        self.csv_file_path = base_path + self.deploymentList[ID_VR].namespace + "/v1/" + self.obs_csv
         os.makedirs(os.path.dirname(self.csv_file_path), exist_ok=True)
         if not os.path.isfile(self.csv_file_path):
             self.create_csv_file(self.csv_file_path)
@@ -256,14 +257,17 @@ class VrLearning(gym.Env):
             save_to_csv(self.file_results, self.episode_count, mean(self.avg_pods), mean(self.avg_latency),
                         self.total_reward, self.execution_time)
 
+        terminated = self.episode_over
+        truncated = False
+
         # return ob, reward, self.episode_over, self.info
-        return np.array(norm_ob), reward, self.episode_over, self.info
+        return np.array(norm_ob, dtype=np.float32), float(reward), terminated, truncated, self.info
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
         """
         Reset the state of the environment and returns an initial observation.
         Returns
@@ -286,7 +290,7 @@ class VrLearning(gym.Env):
         self.current_clients = random.randint(self.min_clients, self.max_clients)
         self.current_delay = random.randint(self.min_delay, self.max_delay)
 
-        return np.array(self.get_state()[1])
+        return np.array(self.get_state()[1], dtype=np.float32), self.info
 
     def render(self, mode='human', close=False):
         # Render the environment to the screen
@@ -301,7 +305,7 @@ class VrLearning(gym.Env):
             self.episode_over = True
 
         # Map the action (0 to 29) to the target replicas (1 to 30)
-        target_replicas = action + MIN_REPLICATION
+        target_replicas = int(action) + MIN_REPLICATION
         
         # Send the declarative command to the deployment
         self.deploymentList[id].scale_to(target_replicas, self)
