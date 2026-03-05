@@ -141,6 +141,9 @@ class VrLearning(gym.Env):
         # logging.info("[Init] Action Spaces: " + str(self.action_space))
         # logging.info("[Init] Observation Spaces: " + str(self.observation_space))
 
+        self.current_clients = MIN_CLIENTS
+        self.current_delay = MIN_DELAY
+
         # Info
         self.total_reward = None
         self.avg_pods = []
@@ -163,7 +166,7 @@ class VrLearning(gym.Env):
 
         # Create CSV files
         print("Creating file")
-        self.csv_file_path = "../../datasets/real/" + self.deploymentList[0].namespace + "/v1/" + self.obs_csv
+        self.csv_file_path = "../../datasets/real/" + self.deploymentList[ID_VR].namespace + "/v1/" + self.obs_csv
         os.makedirs(os.path.dirname(self.csv_file_path), exist_ok=True)
         if not os.path.isfile(self.csv_file_path):
             self.create_csv_file(self.csv_file_path)
@@ -215,21 +218,27 @@ class VrLearning(gym.Env):
                 # .format(self.current_step, self.waiting_period))
                 time.sleep(self.waiting_period)  # Wait a few seconds...
             
-            network_delay = random.randint(self.min_delay, self.max_delay)
-            num_clients = random.randint(self.min_clients, self.max_clients)
+            # Random Walk for Clients (Change by -3 to +3 users per step)
+            client_step = random.randint(-3, 3)
+            self.current_clients = max(self.min_clients, min(self.max_clients, self.current_clients + client_step))
+            
+            # Random Walk for Delay (Change by -2 ms to +2 ms per step)
+            delay_step = random.randint(-2, 2)
+            self.current_delay = max(self.min_delay, min(self.max_delay, self.current_delay + delay_step))
 
-            self.deploymentList[0].network_delay = network_delay
-            self.deploymentList[0].num_clients = num_clients
+            self.deploymentList[ID_VR].network_delay = self.current_delay
+            self.deploymentList[ID_VR].num_clients = self.current_clients
             
             # Set random delay
-            self.set_network(delay_ms=network_delay)
+            self.set_network(delay_ms=self.current_delay)
 
             # Trigger the VR session
             payload = {
-                "amount_user": num_clients,
-                "amount_pods": self.deploymentList[0].num_pods,
+                "amount_user": self.current_clients,
+                "amount_pods": self.deploymentList[ID_VR].num_pods,
                 "session_duration": get_session_duration()
             }
+            
             data = {} 
             try:
                 response = requests.post(FLASK_URL, json=payload, timeout=300)
@@ -251,7 +260,7 @@ class VrLearning(gym.Env):
         self.total_reward += reward
 
         self.avg_pods.append(get_num_pods(self.deploymentList))
-        self.avg_latency.append(self.deploymentList[0].latency)
+        self.avg_latency.append(self.deploymentList[ID_VR].latency)
 
         # Print Step and Total Reward
         # if self.current_step == MAX_STEPS:
@@ -303,7 +312,11 @@ class VrLearning(gym.Env):
         # Deployment Data
         self.deploymentList = get_vr_list(self.k8s, self.min_pods, self.max_pods)
 
-        return np.array(self.get_state())
+        # Random initializer
+        self.current_clients = random.randint(self.min_clients, self.max_clients)
+        self.current_delay = random.randint(self.min_delay, self.max_delay)
+
+        return np.array(self.get_state()[1])
 
     def render(self, mode='human', close=False):
         # Render the environment to the screen
@@ -525,7 +538,7 @@ class VrLearning(gym.Env):
             }
             
             # Dynamically add the rest of the metrics from the observation array
-            for i, metric in enumerate(self.deploymentList[0].client_metrics):
+            for i, metric in enumerate(self.deploymentList[ID_VR].client_metrics):
                 # obs[7] is the first new metric (n_720_z1)
                 row['vr-deployment_' + metric] = obs[7 + i]
                 
