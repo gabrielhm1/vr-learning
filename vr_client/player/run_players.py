@@ -96,13 +96,11 @@ def start_players():
 
     # Build response payload with experiment metrics
     metric_keys = [
+        "stall_duration", "stall_count",
         "n_720_z1", "n_1080_z1", "n_4k_z1",
         "n_720_z2", "n_1080_z2", "n_4k_z2",
         "n_720_z3", "n_1080_z3", "n_4k_z3",
-        "z1_bit", "z2_bit", "z3_bit",
-        "n_sw_z1", "n_sw_z2", "n_sw_z3",
-        "total_stall", "stall_count", 
-        "start_time", "session_qoe"
+        "n_sw_z1", "n_sw_z2", "n_sw_z3" 
     ]
 
     payload = {

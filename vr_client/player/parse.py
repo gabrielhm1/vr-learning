@@ -36,9 +36,9 @@ def parse_qoe_metrics(num_clients, base_path):
         # Initialize metrics dictionary for current client
         metrics = {}
 
-        metrics['total_stall'] = row.get('total_stall', 0)
+        metrics['stall_duration'] = row.get('total_stall', 0)
         metrics['stall_count'] = row.get('stall_count', 0)
-        metrics['start_time'] = row.get('start_time', 0)
+        # metrics['start_time'] = row.get('start_time', 0)
 
         # Get QoE metrics per zone
         for i, zone in enumerate([1, 2, 3]):
@@ -51,9 +51,9 @@ def parse_qoe_metrics(num_clients, base_path):
             metrics[f'n_sw_z{zone}'] = row.get(f'qt_sw_z{zone}', 0)
 
             # Extract bitrate
-            metrics[f'z{zone}_bit'] = row.get(f'z{zone}_bit', 0)
+            # metrics[f'z{zone}_bit'] = row.get(f'z{zone}_bit', 0)
 
-        metrics['session_qoe'] = row.get('session_qoe', 0)
+        # metrics['session_qoe'] = row.get('session_qoe', 0)
         results.append(metrics)
 
     # Calculate average metrics across all clients
