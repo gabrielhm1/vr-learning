@@ -19,7 +19,7 @@ def save_to_csv(file_name, episode, avg_pods, avg_latency, reward, execution_tim
 def get_stall_penalty(deployment_list):
     # Scaling factors
     scale_duration = 20.0  # seconds
-    scale_count = 10.0      # number of stalls
+    # scale_count = 10.0     # number of stalls
 
     # Extract client metrics
     for d in deployment_list:
@@ -27,7 +27,7 @@ def get_stall_penalty(deployment_list):
         stall_count = d.stall_count
 
     # Calculate bounded penalty
-    p_qoe = math.tanh((stall_duration / scale_duration) + (stall_count / scale_count))
+    p_qoe = math.tanh((stall_duration / scale_duration))
 
     return p_qoe
 
@@ -60,14 +60,14 @@ def get_thrashing_penalty(deployment_list):
 
 
 def get_qoe_reward(deployment_list):
-    alpha = 0.6 # stall weight
-    beta = 0.3 # cost weight
-    gamma = 0.1 # thrashing weight
+    alpha = 0.5 # stall weight
+    beta = 0.5 # cost weight
+    # gamma = 0.1 # thrashing weight
 
     p_stall = get_stall_penalty(deployment_list)
     p_cost = get_cost_penalty(deployment_list)
-    p_thrasing = get_thrashing_penalty(deployment_list)
-    reward = - ((alpha * p_stall) + (beta * p_cost) + (gamma * p_thrasing))
+    # p_thrasing = get_thrashing_penalty(deployment_list)
+    reward = - ((alpha * p_stall) + (beta * p_cost))
 
     return reward
 
