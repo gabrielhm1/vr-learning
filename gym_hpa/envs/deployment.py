@@ -3,6 +3,7 @@ import random
 import time
 import requests
 from kubernetes import client, config 
+from .common import PROMETHEUS_URL
 
 # Constants
 MAX_CPU = 105  # cpu in m (defined as slightly above the limit)
@@ -22,9 +23,6 @@ MAX_TILES_Z3 = 4000
 MAX_SW = 10 
 
 VR_SESSION_DURATION = 60 # session duration in s
-
-# port-forward in k8s cluster
-PROMETHEUS_URL = 'http://10.2.64.130:32635/'
 
 # Endpoint of your Kube cluster: kube proxy enabled
 HOST = "http://localhost:8080"
@@ -159,11 +157,7 @@ class DeploymentStatus:  # Deployment Status (Workload)
 
         # Initialize VR client metrics to 0
         self.client_metrics = [
-            'latency', 'stall_duration', 'stall_count',
-            'n_720_z1', 'n_1080_z1', 'n_4k_z1',
-            'n_720_z2', 'n_1080_z2', 'n_4k_z2',
-            'n_720_z3', 'n_1080_z3', 'n_4k_z3',
-            'n_sw_z1', 'n_sw_z2', 'n_sw_z3'
+            'latency', 'stall_duration', 'stall_count'
         ]
 
         for metric in self.client_metrics:
@@ -390,7 +384,7 @@ class DeploymentStatus:  # Deployment Status (Workload)
             # logging.info("Constraint: MIN Pod Replicas! Desired replicas: " + str(replicas))
             env.constraint_min_pod_replicas = True
 
-    def scale_to(self, target_replicas, env):
+    def scale_to(self, target_replicas):
         """
         Declarative scaling: directly sets the desired number of pods.
         """
