@@ -350,7 +350,7 @@ class VrLearning(gym.Env):
         return spaces.Box(
             low=np.float32(0.0), 
             high=np.float32(1.0), 
-            shape=(22,), 
+            shape=(10,), 
             dtype=np.float32
         )
 
