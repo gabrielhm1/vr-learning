@@ -190,14 +190,14 @@ class VrLearning(gym.Env):
             delay_step = np.random.choice([-2, -1, 0, 1, 2])
             self.current_delay = max(0, min(MAX_DELAY, self.current_delay + delay_step))
 
+            self.deploymentList[ID_VR].network_delay = self.current_delay
+            self.deploymentList[ID_VR].num_clients = self.current_clients
+
         self.take_action(action, 0)
 
         # Wait a few seconds if on real k8s cluster
         if self.k8s:
             time.sleep(self.waiting_period)  # Wait a few seconds...
-
-            self.deploymentList[ID_VR].network_delay = self.current_delay
-            self.deploymentList[ID_VR].num_clients = self.current_clients
             
             # Set random delay
             self.set_network(delay_ms=self.current_delay)
@@ -288,6 +288,9 @@ class VrLearning(gym.Env):
         # Random initializer
         self.current_clients = random.randint(self.min_clients, self.max_clients)
         self.current_delay = random.randint(self.min_delay, self.max_delay)
+
+        self.deploymentList[ID_VR].num_clients = self.current_clients
+        self.deploymentList[ID_VR].network_delay = self.current_delay
 
         return np.array(self.get_state()[1], dtype=np.float32), self.info
 
