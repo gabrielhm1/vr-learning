@@ -2,13 +2,11 @@ import requests
 import subprocess
 import time
 import csv
+from common import FLASK_URL, PROMETHEUS_URL, WORKER_IP, USER, INTERFACE, CSV_FILE
 
 # Script to build the environment table by running experiments and collecting metrics (runs on Kubernetes master)
 
-# Configuration and API endpoints
-CSV_FILE = "/users/marcosbh/data/result.csv"
-FLASK_URL = "http://10.2.64.143:8000/start"
-PROMETHEUS_URL = "http://10.100.246.192:9090/"
+# Configuration 
 DEPLOYMENT_NAME = "vr-deployment"
 NAMESPACE = "default"
 JOB_NAME = "kubernetes-cadvisor"
@@ -18,10 +16,6 @@ MAX_PODS = 20
 MAX_CLIENTS = 30
 MAX_DELAY = 20
 SESSION_DURATION = 60 # in seconds
-
-WORKER_IP = "10.2.64.137"
-USER = "marcosbh"
-INTERFACE = "eno1"
 
 def run_remote_command(command):
     """Executes a command on the worker node via SSH."""
