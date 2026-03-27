@@ -6,15 +6,11 @@ import os
 import random
 import shutil
 import parse
+from common import CLIENT_IP, WORKER_IP
 
 # Flask application to manage VR player simulation and experiment execution, exporting the client-side metrics to master
 app = Flask(__name__)
 app.json.sort_keys = False
-
-# Configuration and network settings
-CLIENT_IP = "10.2.64.143"
-WORKER_IP = "10.2.64.137"
-SERVER_IP = "10.2.64.130"
 
 def create_folders(num_clients, base_path):
     """
