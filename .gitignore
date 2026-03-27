@@ -1,5 +1,18 @@
 .idea
 
+results.csv
+
+reset_experiment.sh
+
+# Common configuration
+gym_hpa/envs/common.py
+collect_data/common.py
+vr_client/player/common.py
+
+# Models
+models/
+tensorboard_logs/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
