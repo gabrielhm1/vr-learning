@@ -8,12 +8,13 @@ from statistics import mean
 import requests
 import random
 import subprocess
-
+import joblib
 import gymnasium as gym
 import numpy as np
 import pandas as pd
 from gymnasium import spaces
 from gymnasium.utils import seeding
+from .common import BASE_PATH, FLASK_URL, WORKER_IP, USER, INTERFACE
 
 # Number of Requests - Discrete Event
 from gym_hpa.envs.deployment import get_max_cpu, get_max_traffic, get_max_latency, get_vr_list, get_max_stall_duration, get_max_stall_count, get_session_duration, get_max_tiles, get_max_sw
@@ -33,13 +34,7 @@ MAX_CLIENTS = 30
 MIN_DELAY = 0
 MAX_DELAY = 20
 
-MAX_STEPS = 25  # MAX Number of steps per episode
-
-FLASK_URL = "http://10.2.64.143:8000/start"
-
-WORKER_IP = "10.2.64.137"
-USER = "marcosbh"
-INTERFACE = "eno1"
+MAX_STEPS = 150  # MAX Number of steps per episode
 
 # Deployments
 DEPLOYMENTS = ["vr-deployment"]
@@ -60,7 +55,7 @@ class VrLearning(gym.Env):
 
     metadata = {'render.modes': ['human', 'ansi', 'array']}
 
-    def __init__(self, k8s=False, goal_reward="qoe", waiting_period=0.3):
+    def __init__(self, experiment_name, k8s=False, goal_reward="qoe", waiting_period=0.3):
         # Define action and observation space
         # They must be gym.spaces objects
 
@@ -68,6 +63,7 @@ class VrLearning(gym.Env):
 
         self.k8s = k8s
         self.name = "vr_application_gym"
+        self.experiment_name = experiment_name
         self.__version__ = "0.0.1"
         self.seed()
         self.goal_reward = goal_reward
@@ -137,17 +133,19 @@ class VrLearning(gym.Env):
 
         # Create CSV files
         print("Creating file")
-        base_path = os.path.expanduser("~/vr-learning/datasets/real/")
-        self.csv_file_path = base_path + self.deploymentList[ID_VR].namespace + "/v1/" + self.obs_csv
+        if self.k8s:
+            base_path = BASE_PATH + "/real/"
+        else:
+            base_path = BASE_PATH + "/simulated/"
+
+            print("Loading Digital Twin...")
+            self.digital_twin = joblib.load("/home/bernardoacp/Documents/Materiais-de-Estudo/vr-learning/models/xgb_surrogate_model.pkl")
+            print("Running in Digital Twin mode.")
+
+        self.csv_file_path = base_path + self.deploymentList[ID_VR].namespace + f"/{self.experiment_name}/" + self.obs_csv
         os.makedirs(os.path.dirname(self.csv_file_path), exist_ok=True)
         if not os.path.isfile(self.csv_file_path):
             self.create_csv_file(self.csv_file_path)
-
-        if not self.k8s:
-            try:
-                self.df = pd.read_csv(self.csv_file_path)
-            except pd.errors.EmptyDataError:
-                logging.warning("Simulation CSV is empty! Please collect data on K8s first.")
 
     def run_remote_command(self, command, user=USER, ip=WORKER_IP):
         """Executes a command on the worker node via SSH."""
@@ -182,20 +180,21 @@ class VrLearning(gym.Env):
 
             self.time_start = time.time()
 
-        # Execute one time step within the environment
+
+        if self.current_step > 1:
+            # Client Random Walk
+            client_step = np.random.choice([-2, -1, 0, 1, 2])
+            self.current_clients = max(0, min(MAX_CLIENTS, self.current_clients + client_step))
+            
+            # Delay Random Walk
+            delay_step = np.random.choice([-2, -1, 0, 1, 2])
+            self.current_delay = max(0, min(MAX_DELAY, self.current_delay + delay_step))
+
         self.take_action(action, 0)
 
         # Wait a few seconds if on real k8s cluster
         if self.k8s:
             time.sleep(self.waiting_period)  # Wait a few seconds...
-            
-            # Random Walk for Clients (Change by -3 to +3 users per step)
-            client_step = random.randint(-3, 3)
-            self.current_clients = max(self.min_clients, min(self.max_clients, self.current_clients + client_step))
-            
-            # Random Walk for Delay (Change by -2 ms to +2 ms per step)
-            delay_step = random.randint(-2, 2)
-            self.current_delay = max(self.min_delay, min(self.max_delay, self.current_delay + delay_step))
 
             self.deploymentList[ID_VR].network_delay = self.current_delay
             self.deploymentList[ID_VR].num_clients = self.current_clients
@@ -308,7 +307,7 @@ class VrLearning(gym.Env):
         target_replicas = int(action) + MIN_REPLICATION
         
         # Send the declarative command to the deployment
-        self.deploymentList[id].scale_to(target_replicas, self)
+        self.deploymentList[id].scale_to(target_replicas)
 
     @property
     def get_reward(self):
@@ -330,15 +329,11 @@ class VrLearning(gym.Env):
         raw_max = [
             self.max_clients, self.max_delay, self.max_pods,
             get_max_cpu(), get_max_cpu(), get_max_traffic(), get_max_traffic(),
-            get_max_latency(), get_max_stall_duration(), get_max_stall_count(),
-            get_max_tiles(1), get_max_tiles(1), get_max_tiles(1),
-            get_max_tiles(2), get_max_tiles(2), get_max_tiles(2),
-            get_max_tiles(3), get_max_tiles(3), get_max_tiles(3),
-            get_max_sw(), get_max_sw(), get_max_sw()
+            get_max_latency(), get_max_stall_duration(), get_max_stall_count()
         ]
 
         # Define  minimums 
-        raw_min = [self.min_clients, self.min_delay, self.min_pods] + [0]*19
+        raw_min = [self.min_clients, self.min_delay, self.min_pods] + [0.0]*7
 
         # Normalize to [0, 1]
         norm_ob = []
@@ -364,49 +359,34 @@ class VrLearning(gym.Env):
         return reward
 
     def simulation_update(self):
+        """
+        Uses the Model to predict the infrastructure and application metrics based on the current state.
+        """
         if self.current_step == 1:
-            # Get a random sample!
-            sample = self.df.sample()
-            # print(sample)
+            # On the first step, there is no transition delta.
+            self.deploymentList[0].num_previous_pods = self.deploymentList[0].num_pods
+        
+        # 1. Gather the Input Vector
+        current_pods = self.deploymentList[0].num_previous_pods
+        target_pods = self.deploymentList[0].num_pods
+        num_clients = self.current_clients
+        network_delay = self.current_delay
+        
+        X_input = np.array([[current_pods, target_pods, num_clients, network_delay]])
+        
+        # 2. Predict the Outcomes
+        # Outputs: [stall_duration, stall_count, latency, cpu_usage, max_cpu, traffic_in, traffic_out]
+        predictions = self.digital_twin.predict(X_input)[0]
+        
+        # 3. Map to the Deployment Attributes (Enforce physical reality with max(0, x))
+        self.deploymentList[0].stall_duration = max(0.0, float(predictions[0]))
+        self.deploymentList[0].stall_count = max(0.0, float(predictions[1]))
+        self.deploymentList[0].latency = max(0.0, float(predictions[2]))
+        self.deploymentList[0].cpu_usage = max(0.0, float(predictions[3]))
+        self.deploymentList[0].max_cpu = max(0.0, float(predictions[4]))
+        self.deploymentList[0].received_traffic = max(0.0, float(predictions[5]))
+        self.deploymentList[0].transmit_traffic = max(0.0, float(predictions[6]))
 
-            for i in range(len(DEPLOYMENTS)):
-                self.deploymentList[i].num_pods = int(sample[DEPLOYMENTS[i] + '_num_pods'].values[0])
-                self.deploymentList[i].num_previous_pods = int(sample[DEPLOYMENTS[i] + '_num_pods'].values[0])
-
-        else:
-            pods = []
-            previous_pods = []
-            diff = []
-            for i in range(len(DEPLOYMENTS)):
-                pods.append(self.deploymentList[i].num_pods)
-                previous_pods.append(self.deploymentList[i].num_previous_pods)
-                aux = pods[i] - previous_pods[i]
-                diff.append(aux)
-                self.df['diff-' + DEPLOYMENTS[i]] = self.df[DEPLOYMENTS[i] + '_num_pods'].diff()
-
-            # print(pods)
-            # print(previous_pods)
-            # print(diff)
-            # print(self.df_aggr)
-
-            data = 0
-            for i in range(len(DEPLOYMENTS)):
-                data = self.df.loc[self.df[DEPLOYMENTS[i] + '_num_pods'] == pods[i]]
-                data = data.loc[data['diff-' + DEPLOYMENTS[i]] == diff[i]]
-                if data.size == 0:
-                    data = self.df.loc[self.df[DEPLOYMENTS[i] + '_num_pods'] == pods[i]]
-
-            sample = data.sample()
-            # print(sample)
-
-        for i in range(len(DEPLOYMENTS)):
-            self.deploymentList[i].cpu_usage = int(sample[DEPLOYMENTS[i] + '_cpu_usage'].values[0])
-            self.deploymentList[i].max_cpu = int(sample[DEPLOYMENTS[i] + '_max_cpu'].values[0])
-            self.deploymentList[i].received_traffic = int(sample[DEPLOYMENTS[i] + '_traffic_in'].values[0])
-            self.deploymentList[i].transmit_traffic = int(sample[DEPLOYMENTS[i] + '_traffic_out'].values[0])
-            self.deploymentList[i].latency = float("{:.3f}".format(sample[DEPLOYMENTS[i] + '_latency'].values[0]))
-
-        return
 
     def save_obs_to_csv(self, obs_file, obs, action, reward, done):
         """
@@ -447,10 +427,10 @@ class VrLearning(gym.Env):
             
             # Dynamically add the rest of the metrics from the observation array
             for i, metric in enumerate(self.deploymentList[ID_VR].client_metrics):
-                # obs[7] is the first new metric (n_720_z1)
                 row['vr-deployment_' + metric] = obs[7 + i]
                 
             writer.writerow(row)
+            
 
     def create_csv_file(self, file_name):
         file = open(file_name, 'w', newline='')
